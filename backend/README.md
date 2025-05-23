@@ -113,6 +113,13 @@ The backend uses FFmpeg to:
 - Create audio segments for streaming
 - Generate DASH manifest files
 
+#### FFmpeg tips
+Sample command to start a stream
+- `ffmpeg -f dshow -i audio="Microphone (HD Pro Webcam C920)" -map 0:a -c:a aac -b:a 128k -vf "asetnsamples=n=1024:p=0" -f dash -seg_duration 4 -use_timeline 1 -use_template 1 -window_size 10 -extra_window_size 5 -remove_at_exit 0 -hls_playlist 0 manifest.mpd`
+
+Get list of system devices
+- `ffmpeg -list_devices true -f dshow -i dummy`
+
 ### File Management
 
 - Uploaded files are temporarily stored in the `uploads` directory

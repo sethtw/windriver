@@ -12,7 +12,6 @@ import {
 } from '@mui/material';
 import shaka from 'shaka-player';
 import axios, { AxiosError } from 'axios';
-
 const API_BASE_URL = 'http://localhost:8000';
 
 interface AudioFile {
@@ -26,6 +25,10 @@ declare module 'shaka-player' {
     addEventListener(event: string, callback: (event: { detail: any }) => void): void;
     configure(config: { streaming: { retryParameters: any } }): void;
   }
+}
+
+async function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 // Custom hook for file loading
@@ -175,6 +178,55 @@ const FileUploader: React.FC<{ onFileUpload: (event: React.ChangeEvent<HTMLInput
   </Paper>
 );
 
+// CaptureAndStream component
+const CaptureAndStream: React.FC<{ onCaptureAndStream: () => void, loading: boolean }> = ({ onCaptureAndStream, loading }) => (
+  <Paper sx={{ p: 2, mb: 2 }}>
+    <label htmlFor="start-streaming">
+      <Button
+        onClick={onCaptureAndStream}
+        variant="contained"
+        component="span"
+        disabled={loading}
+      >
+        {loading ? <CircularProgress size={24} /> : 'Start Streaming'}
+      </Button>
+    </label>
+  </Paper>
+);
+
+// AudioDevices component
+const AudioDevices: React.FC<{ onGetAudioDevices: () => void, loading: boolean }> = ({ onGetAudioDevices, loading }) => (
+  <Paper sx={{ p: 2, mb: 2 }}>
+    <label htmlFor="get-audio-devices">
+      <Button
+        onClick={onGetAudioDevices}
+        variant="contained"
+        component="span"
+        disabled={loading}
+      >
+        {loading ? <CircularProgress size={24} /> : 'Get Audio Devices'}
+      </Button>
+    </label>
+  </Paper>
+);
+
+// StopStreaming component
+const StopStreaming: React.FC<{ onStopStreaming: () => void, loading: boolean }> = ({ onStopStreaming, loading }) => (
+  <Paper sx={{ p: 2, mb: 2 }}>
+    <label htmlFor="stop-streaming">
+      <Button
+        onClick={onStopStreaming}
+        variant="contained"
+        color="secondary"
+        component="span"
+        disabled={loading}
+      >
+        {loading ? <CircularProgress size={24} /> : 'Stop Streaming'}
+      </Button>
+    </label>
+  </Paper>
+);
+
 // ErrorAlert component
 const ErrorAlert: React.FC<{ error: string | null }> = ({ error }) => (
   error ? (
@@ -186,6 +238,7 @@ const ErrorAlert: React.FC<{ error: string | null }> = ({ error }) => (
 
 function App(): JSX.Element {
   const [selectedFile, setSelectedFile] = useState<AudioFile | null>(null);
+  const [isStreaming, setIsStreaming] = useState<boolean>(false);
   const videoRef = useRef<HTMLAudioElement>(null);
   const { files, loading, error: filesError, loadFiles } = useFiles();
   const { playerRef, error: playerError, handleFileSelect } = useAudioPlayer(videoRef);
@@ -218,6 +271,39 @@ function App(): JSX.Element {
     handleFileSelect(file);
   }, [handleFileSelect]);
 
+  const handleCaptureAndStream = async (): Promise<void> => {
+    try {
+      axios.post(`${API_BASE_URL}/capture-and-stream`);
+      console.log('Capturing and streaming...');
+      setIsStreaming(true);
+      await sleep(5000);
+      await loadFiles();
+      console.log('Files loaded');
+    } catch (err) {
+      console.error('Failed to initialize stream:', err);
+      setIsStreaming(false);
+    }
+  };
+
+  const handleStopStreaming = async (): Promise<void> => {
+    try {
+      await axios.post(`${API_BASE_URL}/stop-streaming`);
+      setIsStreaming(false);
+      await loadFiles();
+    } catch (err) {
+      console.error('Failed to stop stream:', err);
+    }
+  };
+
+  const handleGetAudioDevices = async (): Promise<void> => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/audio-devices`);
+      console.log('Audio devices:', response.data);
+    } catch (err) {
+      console.error('Failed to get audio devices:', err);
+    }
+  };
+
   return (
     <Container maxWidth="md">
       <Box sx={{ my: 4 }}>
@@ -226,6 +312,12 @@ function App(): JSX.Element {
         </Typography>
 
         <FileUploader onFileUpload={handleFileUpload} loading={loading} />
+        <AudioDevices onGetAudioDevices={handleGetAudioDevices} loading={loading} />
+        {!isStreaming ? (
+          <CaptureAndStream onCaptureAndStream={handleCaptureAndStream} loading={loading} />
+        ) : (
+          <StopStreaming onStopStreaming={handleStopStreaming} loading={loading} />
+        )}
         <ErrorAlert error={filesError || playerError} />
 
         <Box sx={{ display: 'flex', gap: 2 }}>

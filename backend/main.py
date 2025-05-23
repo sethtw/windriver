@@ -11,6 +11,7 @@ import subprocess
 from typing import List
 import aiofiles
 import asyncio
+from datetime import datetime
 
 app = FastAPI(title="Audio Streaming Server")
 
@@ -35,6 +36,9 @@ SEGMENTS_DIR = BACKEND_DIR / Path("segments")
 for directory in [UPLOAD_DIR, SEGMENTS_DIR]:
     directory.mkdir(exist_ok=True)
 
+# Global variable to track the FFmpeg process
+current_stream_process = None
+
 async def delete_upload(input_file: Path):
     """Delete the uploaded file"""
     os.remove(input_file)
@@ -43,7 +47,7 @@ async def delete_segments(input_path: Path):
     """Delete the segments directory"""
     os.rmdir(input_path)
 
-async def standardize_filename(input_file: Path) -> Path:
+def standardize_filename(input_file: Path) -> Path:
     """Standardize the filename"""
     original_filename = input_file.stem
     original_extension = input_file.suffix
@@ -55,6 +59,66 @@ async def standardize_filename(input_file: Path) -> Path:
     standardized_filename = standardized_filename + original_extension
     return Path(standardized_filename)
 
+async def capture_and_stream_system_audio():
+    """Capture and stream system audio"""
+    global current_stream_process
+    streamId = Path(f"stream_{datetime.now().strftime('%Y%m%d%H%M%S')}")
+    output_dir = SEGMENTS_DIR / standardize_filename(streamId).stem
+    print("Initiating new stream:", output_dir)
+
+    try:
+        # Create output directory if it doesn't exist
+        output_dir.mkdir(exist_ok=True)
+        
+        # Store the original working directory
+        original_dir = os.getcwd()
+
+        try:
+            # Change to output directory for FFmpeg
+            os.chdir(output_dir)
+
+            # Generate DASH segments using FFmpeg
+            cmd = [
+                "ffmpeg", "-f",
+                "dshow", "-i", "audio=CABLE Output (VB-Audio Virtual Cable)",
+                "-map", "0:a",
+                "-c:a", "aac", "-b:a", "128k",
+                "-vf", "asetnsamples=n=1024:p=0",
+                "-f", "dash",
+                "-seg_duration", "4",
+                "-use_timeline", "1",
+                "-use_template", "1",
+                "-window_size", "10",
+                "-extra_window_size", "5",
+                "-remove_at_exit", "0",
+                "-hls_playlist", "0",
+                str(output_dir / "manifest.mpd")
+            ]
+            
+            current_stream_process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, stderr = await current_stream_process.communicate()
+            
+            if current_stream_process.returncode != 0:
+                raise Exception(f"FFmpeg error: {stderr.decode()}")
+            
+        except Exception as e:
+            print(f"Error processing audio: {str(e)}")
+            return False
+                
+        finally:
+            # Always change back to the original directory
+            os.chdir(original_dir)
+            
+        return True
+    except Exception as e:
+        print(f"Error processing audio: {str(e)}")
+        return False
+
 async def process_audio(input_file: Path, output_dir: Path):
     """Process audio file and create DASH segments"""
     try:
@@ -63,12 +127,10 @@ async def process_audio(input_file: Path, output_dir: Path):
         
         # Store the original working directory
         original_dir = os.getcwd()
-        print("original_dir", original_dir)
 
         try:
             # Change to output directory for FFmpeg
             os.chdir(output_dir)
-            print("process_audio output_dir", output_dir)
 
             # Generate DASH segments using FFmpeg
             cmd = [
@@ -79,8 +141,6 @@ async def process_audio(input_file: Path, output_dir: Path):
                 "-seg_duration", "4",
                 "-use_timeline", "1",
                 "-use_template", "1",
-                "-init_seg_name", "init_$RepresentationID$.m4s",
-                "-media_seg_name", "chunk_$RepresentationID$_$Number%05d$.m4s",
                 str(output_dir / "manifest.mpd")
             ]
             
@@ -108,6 +168,27 @@ async def process_audio(input_file: Path, output_dir: Path):
         print(f"Error processing audio: {str(e)}")
         return False
 
+@app.get("/audio-devices")
+async def get_audio_devices():
+    """Get audio devices"""
+    # Generate DASH segments using FFmpeg
+    cmd = [
+        "ffmpeg", "-list_devices", "true",
+        "-f", "dshow", "-i", "dummy"
+    ]
+    
+    process = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
+    
+    stdout, stderr = await process.communicate()
+    
+    devices = stdout.decode() + stderr.decode()
+    print("Devices:", devices)
+    return devices
+
 @app.post("/upload")
 async def upload_audio(file: UploadFile = File(...)):
     """Upload and process audio file"""
@@ -120,7 +201,7 @@ async def upload_audio(file: UploadFile = File(...)):
             await out_file.write(content)
         
         # Process the audio file
-        standardized_filename = await standardize_filename(Path(file.filename))
+        standardized_filename = standardize_filename(Path(file.filename))
         output_dir = SEGMENTS_DIR / standardized_filename.stem
         print("output_dir", output_dir)
         success = await process_audio(upload_path, output_dir)
@@ -150,6 +231,14 @@ async def list_files():
     print("Available files:", files)
     return files
 
+@app.post("/capture-and-stream")
+async def capture_and_stream():
+    """Capture and stream system audio"""
+    success = await capture_and_stream_system_audio()
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to capture and stream system audio")
+    return {"message": "System audio captured and streaming..."}
+
 @app.route("/stream/{filename}/manifest", methods=["GET", "HEAD"])
 async def get_manifest(request: Request):
     """Get DASH manifest file"""
@@ -174,6 +263,21 @@ async def get_direct_segment(filename: str, segment_name: str):
         segment_path,
         media_type="audio/mp4"
     )
+
+@app.post("/stop-streaming")
+async def stop_streaming():
+    """Stop the current audio stream"""
+    global current_stream_process
+    if current_stream_process:
+        try:
+            current_stream_process.terminate()
+            await current_stream_process.wait()
+            current_stream_process = None
+            return {"message": "Streaming stopped successfully"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to stop streaming: {str(e)}")
+    else:
+        raise HTTPException(status_code=400, detail="No active stream to stop")
 
 if __name__ == "__main__":
     import uvicorn
