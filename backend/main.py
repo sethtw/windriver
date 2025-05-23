@@ -163,18 +163,6 @@ async def get_manifest(request: Request):
         media_type="application/dash+xml"
     )
 
-@app.get("/stream/{filename}/segment/{segment_name}")
-async def get_segment(filename: str, segment_name: str):
-    """Get audio segment file"""
-    segment_path = SEGMENTS_DIR / Path(filename).stem / segment_name
-    print(f"Requested segment: {segment_path}")
-    if not segment_path.exists():
-        raise HTTPException(status_code=404, detail="Segment not found")
-    return FileResponse(
-        segment_path,
-        media_type="audio/mp4"
-    )
-
 @app.get("/stream/{filename}/{segment_name}")
 async def get_direct_segment(filename: str, segment_name: str):
     """Get audio segment file directly"""

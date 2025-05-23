@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Container, 
   Box, 
@@ -11,14 +11,13 @@ import {
   CircularProgress
 } from '@mui/material';
 import shaka from 'shaka-player';
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 
 const API_BASE_URL = 'http://localhost:8000';
 
 interface AudioFile {
   name: string;
   manifest_url: string;
-  manifest_url_new: string;
 }
 
 // Add Shaka Player type definitions
@@ -29,94 +28,71 @@ declare module 'shaka-player' {
   }
 }
 
-function App(): JSX.Element {
+// Custom hook for file loading
+const useFiles = () => {
   const [files, setFiles] = useState<AudioFile[]>([]);
-  const [selectedFile, setSelectedFile] = useState<AudioFile | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const videoRef = useRef<HTMLAudioElement>(null);
+
+  const loadFiles = useCallback(async (): Promise<void> => {
+    setLoading(true);
+    try {
+      const response = await axios.get<AudioFile[]>(`${API_BASE_URL}/files`);
+      setFiles(response.data);
+    } catch (err) {
+      if (err instanceof AxiosError) {
+        setError(err.message);
+      } else {
+        setError('Failed to load files');
+      }
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { files, loading, error, loadFiles };
+};
+
+// Custom hook for audio player
+const useAudioPlayer = (videoRef: React.RefObject<HTMLAudioElement>) => {
   const playerRef = useRef<shaka.Player | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Initialize Shaka Player
     shaka.polyfill.installAll();
     if (shaka.Player.isBrowserSupported() && videoRef.current) {
       const player = new shaka.Player(videoRef.current);
       playerRef.current = player;
     }
 
-    // Load available files
-    loadFiles();
-
     return () => {
       if (playerRef.current) {
         playerRef.current.destroy();
       }
     };
-  }, []);
+  }, [videoRef]);
 
-  const loadFiles = async (): Promise<void> => {
-    try {
-      const response = await axios.get<AudioFile[]>(`${API_BASE_URL}/files`);
-      setFiles(response.data);
-    } catch (err) {
-      setError('Failed to load files');
-      console.error(err);
-    }
-  };
-
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setLoading(true);
-    setError(null);
-
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      await axios.post(`${API_BASE_URL}/upload`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-      await loadFiles();
-    } catch (err) {
-      setError('Failed to upload file');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleFileSelect = async (file: AudioFile): Promise<void> => {
-    setSelectedFile(file);
+  const handleFileSelect = useCallback(async (file: AudioFile): Promise<void> => {
     setError(null);
     console.log('Selected file:', file);
 
     try {
       if (playerRef.current) {
-        // // Ensure the manifest URL is properly constructed
-        // const manifestUrl = `${API_BASE_URL}${file.manifest_url_new}`;
-        // console.log('Attempting to load manifest from:', manifestUrl);
-        
         const streamId = `${API_BASE_URL}${file.manifest_url}`;
         console.log('Attempting to load manifest and segments from:', streamId);
         
-        // Add error event listener with type casting
         (playerRef.current as any).addEventListener('error', (event: { detail: any }) => {
           console.error('Shaka Player error:', event.detail);
           setError(`Player error: ${event.detail.code} - ${event.detail.message}`);
         });
 
-        // Configure network retry parameters with type casting
         (playerRef.current as any).configure({
           streaming: {
             retryParameters: {
-              timeout: 10000,  // 10 seconds
+              timeout: 10000,
               maxAttempts: 3,
-              baseDelay: 1000,  // 1 second
+              baseDelay: 1000,
               backoffFactor: 2,
               fuzzFactor: 0.5
             }
@@ -137,7 +113,110 @@ function App(): JSX.Element {
         setError('Failed to play file');
       }
     }
+  }, [videoRef]);
+
+  return { playerRef, error, handleFileSelect };
+};
+
+// FileList component
+const FileList: React.FC<{ files: AudioFile[], selectedFile: AudioFile | null, onFileSelect: (file: AudioFile) => void }> = ({ files, selectedFile, onFileSelect }) => (
+  <Paper sx={{ p: 2, flex: 1 }}>
+    <Typography variant="h6" gutterBottom>
+      Available Files
+    </Typography>
+    <List>
+      {files.map((file) => (
+        <ListItem
+          key={file.name}
+          button
+          selected={selectedFile?.name === file.name}
+          onClick={() => onFileSelect(file)}
+        >
+          <ListItemText primary={file.name} />
+        </ListItem>
+      ))}
+    </List>
+  </Paper>
+);
+
+// AudioPlayer component
+const AudioPlayer: React.FC<{ videoRef: React.RefObject<HTMLAudioElement> }> = ({ videoRef }) => (
+  <Paper sx={{ p: 2, flex: 1 }}>
+    <Typography variant="h6" gutterBottom>
+      Player
+    </Typography>
+    <audio
+      ref={videoRef}
+      controls
+      style={{ width: '100%' }}
+    />
+  </Paper>
+);
+
+// FileUploader component
+const FileUploader: React.FC<{ onFileUpload: (event: React.ChangeEvent<HTMLInputElement>) => void, loading: boolean }> = ({ onFileUpload, loading }) => (
+  <Paper sx={{ p: 2, mb: 2 }}>
+    <input
+      accept="audio/*"
+      style={{ display: 'none' }}
+      id="file-upload"
+      type="file"
+      onChange={onFileUpload}
+    />
+    <label htmlFor="file-upload">
+      <Button
+        variant="contained"
+        component="span"
+        disabled={loading}
+      >
+        {loading ? <CircularProgress size={24} /> : 'Upload Audio'}
+      </Button>
+    </label>
+  </Paper>
+);
+
+// ErrorAlert component
+const ErrorAlert: React.FC<{ error: string | null }> = ({ error }) => (
+  error ? (
+    <Typography color="error" sx={{ mb: 2 }}>
+      {error}
+    </Typography>
+  ) : null
+);
+
+function App(): JSX.Element {
+  const [selectedFile, setSelectedFile] = useState<AudioFile | null>(null);
+  const videoRef = useRef<HTMLAudioElement>(null);
+  const { files, loading, error: filesError, loadFiles } = useFiles();
+  const { playerRef, error: playerError, handleFileSelect } = useAudioPlayer(videoRef);
+
+  useEffect(() => {
+    loadFiles();
+  }, [loadFiles]);
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      await axios.post(`${API_BASE_URL}/upload`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      await loadFiles();
+    } catch (err) {
+      console.error('Failed to upload file:', err);
+    }
   };
+
+  const onFileSelect = useCallback((file: AudioFile) => {
+    setSelectedFile(file);
+    handleFileSelect(file);
+  }, [handleFileSelect]);
 
   return (
     <Container maxWidth="md">
@@ -146,60 +225,12 @@ function App(): JSX.Element {
           Audio Streaming Player
         </Typography>
 
-        <Paper sx={{ p: 2, mb: 2 }}>
-          <input
-            accept="audio/*"
-            style={{ display: 'none' }}
-            id="file-upload"
-            type="file"
-            onChange={handleFileUpload}
-          />
-          <label htmlFor="file-upload">
-            <Button
-              variant="contained"
-              component="span"
-              disabled={loading}
-            >
-              {loading ? <CircularProgress size={24} /> : 'Upload Audio'}
-            </Button>
-          </label>
-        </Paper>
-
-        {error && (
-          <Typography color="error" sx={{ mb: 2 }}>
-            {error}
-          </Typography>
-        )}
+        <FileUploader onFileUpload={handleFileUpload} loading={loading} />
+        <ErrorAlert error={filesError || playerError} />
 
         <Box sx={{ display: 'flex', gap: 2 }}>
-          <Paper sx={{ p: 2, flex: 1 }}>
-            <Typography variant="h6" gutterBottom>
-              Available Files
-            </Typography>
-            <List>
-              {files.map((file) => (
-                <ListItem
-                  key={file.name}
-                  button
-                  selected={selectedFile?.name === file.name}
-                  onClick={() => handleFileSelect(file)}
-                >
-                  <ListItemText primary={file.name} />
-                </ListItem>
-              ))}
-            </List>
-          </Paper>
-
-          <Paper sx={{ p: 2, flex: 1 }}>
-            <Typography variant="h6" gutterBottom>
-              Player
-            </Typography>
-            <audio
-              ref={videoRef}
-              controls
-              style={{ width: '100%' }}
-            />
-          </Paper>
+          <FileList files={files} selectedFile={selectedFile} onFileSelect={onFileSelect} />
+          <AudioPlayer videoRef={videoRef} />
         </Box>
       </Box>
     </Container>
