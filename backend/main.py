@@ -1,3 +1,4 @@
+import re
 from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,6 +34,26 @@ SEGMENTS_DIR = BACKEND_DIR / Path("segments")
 
 for directory in [UPLOAD_DIR, SEGMENTS_DIR]:
     directory.mkdir(exist_ok=True)
+
+async def delete_upload(input_file: Path):
+    """Delete the uploaded file"""
+    os.remove(input_file)
+
+async def delete_segments(input_path: Path):
+    """Delete the segments directory"""
+    os.rmdir(input_path)
+
+async def standardize_filename(input_file: Path) -> Path:
+    """Standardize the filename"""
+    original_filename = input_file.stem
+    original_extension = input_file.suffix
+    # Remove periods and commas
+    standardized_filename = original_filename.replace('.', '').replace(',', '')
+    # Replace spaces and special characters with underscores
+    standardized_filename = re.sub(r'[^a-zA-Z0-9]', '_', standardized_filename)
+    # Add the original extension
+    standardized_filename = standardized_filename + original_extension
+    return Path(standardized_filename)
 
 async def process_audio(input_file: Path, output_dir: Path):
     """Process audio file and create DASH segments"""
@@ -92,21 +113,25 @@ async def upload_audio(file: UploadFile = File(...)):
     """Upload and process audio file"""
     try:
         # Save uploaded file
-        file_path = UPLOAD_DIR / file.filename
-        print("file_path", file_path)
-        async with aiofiles.open(file_path, 'wb') as out_file:
+        upload_path = UPLOAD_DIR / file.filename
+        print("upload_path", upload_path)
+        async with aiofiles.open(upload_path, 'wb') as out_file:
             content = await file.read()
             await out_file.write(content)
         
         # Process the audio file
-        output_dir = SEGMENTS_DIR / Path(file.filename).stem
+        standardized_filename = await standardize_filename(Path(file.filename))
+        output_dir = SEGMENTS_DIR / standardized_filename.stem
         print("output_dir", output_dir)
-        success = await process_audio(file_path, output_dir)
+        success = await process_audio(upload_path, output_dir)
         
         if not success:
             raise HTTPException(status_code=500, detail="Failed to process audio file")
         
-        return {"message": "File uploaded and processed successfully", "filename": file.filename}
+        # Remove the uploaded file
+        await delete_upload(upload_path)
+        
+        return {"message": "File uploaded and processed successfully", "filename": standardized_filename.stem}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -120,35 +145,10 @@ async def list_files():
             if manifest_path.exists():
                 files.append({
                     "name": directory.name,
-                    "manifest_url": f"/stream/{directory.name}/manifest",
-                    "manifest_url_new": f"/stream/{directory.name}"
+                    "manifest_url": f"/stream/{directory.name}/manifest"
                 })
     print("Available files:", files)
     return files
-
-@app.route("/stream/{filename}", methods=["GET", "HEAD"])
-async def get_stream(request: Request):
-    """Get DASH manifest file"""
-    filename = request.path_params["filename"]
-
-    if request.method == "HEAD":
-        manifest_path = SEGMENTS_DIR / Path(filename).stem / "manifest.mpd"
-        print(f"Requested manifest: {manifest_path}")
-        if not manifest_path.exists():
-            raise HTTPException(status_code=404, detail="Manifest not found")
-        return FileResponse(
-            manifest_path,
-            media_type="application/dash+xml"
-        )
-    
-    if request.method == "GET":
-      stream_path = SEGMENTS_DIR / Path(filename).stem
-      return FileResponse(
-          stream_path,
-          media_type="application/dash+xml"
-      )
-    
-    return Response(status_code=405)
 
 @app.route("/stream/{filename}/manifest", methods=["GET", "HEAD"])
 async def get_manifest(request: Request):
