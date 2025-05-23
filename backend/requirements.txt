@@ -1,0 +1,10 @@
+fastapi==0.109.2
+uvicorn==0.27.1
+python-multipart==0.0.9
+python-ffmpeg==2.0.4
+aiofiles==23.2.1
+python-dotenv==1.0.0
+pydantic==2.4.2
+aiohttp==3.9.1
+python-magic==0.4.27
+mutagen==1.47.0  # For audio metadata handling 
