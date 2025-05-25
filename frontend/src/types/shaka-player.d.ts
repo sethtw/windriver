@@ -4,6 +4,21 @@ declare module 'shaka-player' {
     load(uri: string): Promise<void>;
     play(): Promise<void>;
     destroy(): Promise<void>;
+    goToLive(): Promise<void>;
+    getAssetUri(): Promise<string>;
+    getActiveSessionsMetadata(): Promise<Array>;
+    getAudioTracks(): Promise<Array>;
+    getBufferedInfo(): Promise<Object>;
+    getBufferFullness(): Promise<number>;
+    getFetchedPlaybackInfo(): Promise<Object>;
+    getPlaybackRate(): Promise<number>;
+    getPlayheadTimeAsDate(): Promise<Date>;
+    getPresentationStartTimeAsDate(): Promise<Date>;
+    getSegmentAvailabilityDuration(): Promise<number>;
+    getStats(): Promise<Object>;
+    isBuffering(): Promise<boolean>;
+    isEnded(): Promise<boolean>;
+    isFullyLoaded(): Promise<boolean>;
   }
 
   export namespace polyfill {

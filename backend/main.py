@@ -20,7 +20,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "HEAD", "OPTIONS"],
+    allow_methods=["GET", "POST", "DELETE", "HEAD", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["*"],
     max_age=3600,
@@ -66,6 +66,9 @@ async def capture_and_stream_system_audio():
     output_dir = SEGMENTS_DIR / standardize_filename(streamId).stem
     print("Initiating new stream:", output_dir)
 
+    window_size = 0 # 10
+    extra_window_size = 0 # 5
+
     try:
         # Create output directory if it doesn't exist
         output_dir.mkdir(exist_ok=True)
@@ -88,8 +91,8 @@ async def capture_and_stream_system_audio():
                 "-seg_duration", "4",
                 "-use_timeline", "1",
                 "-use_template", "1",
-                "-window_size", "10",
-                "-extra_window_size", "5",
+                "-window_size", str(window_size),
+                "-extra_window_size", str(extra_window_size),
                 "-remove_at_exit", "0",
                 "-hls_playlist", "0",
                 str(output_dir / "manifest.mpd")
@@ -278,6 +281,23 @@ async def stop_streaming():
             raise HTTPException(status_code=500, detail=f"Failed to stop streaming: {str(e)}")
     else:
         raise HTTPException(status_code=400, detail="No active stream to stop")
+
+@app.delete("/files/{filename}")
+async def delete_file(filename: str):
+    """Delete a processed audio file and its segments"""
+    try:
+        # Get the segments directory for this file
+        segments_dir = SEGMENTS_DIR / Path(filename).stem
+        
+        if not segments_dir.exists():
+            raise HTTPException(status_code=404, detail="File not found")
+            
+        # Delete the segments directory and all its contents
+        shutil.rmtree(segments_dir)
+        
+        return {"message": "File deleted successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
