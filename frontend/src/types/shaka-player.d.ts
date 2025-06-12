@@ -6,7 +6,7 @@ declare module 'shaka-player' {
     destroy(): Promise<void>;
     goToLive(): Promise<void>;
     getAssetUri(): Promise<string>;
-    getActiveSessionsMetadata(): Promise<Array>;
+    getActiveSessionsMetadata(): Promise<Object>;
     getAudioTracks(): Promise<Array>;
     getBufferedInfo(): Promise<Object>;
     getBufferFullness(): Promise<number>;

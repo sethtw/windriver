@@ -37,6 +37,7 @@ interface PlayerStats {
   segmentAvailabilityDuration: number | null;
   playerStats: any | null;
   isFullyLoaded: boolean | null;
+  activeSessionsMetadata: any | null;
 }
 
 // Add Shaka Player type definitions
@@ -349,7 +350,8 @@ const PlayerInfo: React.FC<{ playerRef: React.RefObject<shaka.Player> }> = ({ pl
     presentationStartTime: null,
     segmentAvailabilityDuration: null,
     playerStats: null,
-    isFullyLoaded: null
+    isFullyLoaded: null,
+    activeSessionsMetadata: null
   });
 
   useEffect(() => {
@@ -364,7 +366,8 @@ const PlayerInfo: React.FC<{ playerRef: React.RefObject<shaka.Player> }> = ({ pl
             presentationStartTime,
             segmentAvailabilityDuration,
             playerStats,
-            isFullyLoaded
+            isFullyLoaded,
+            activeSessionsMetadata
           ] = await Promise.all([
             playerRef.current.getBufferFullness(),
             playerRef.current.getPlaybackRate(),
@@ -373,7 +376,8 @@ const PlayerInfo: React.FC<{ playerRef: React.RefObject<shaka.Player> }> = ({ pl
             playerRef.current.getPresentationStartTimeAsDate(),
             playerRef.current.getSegmentAvailabilityDuration(),
             playerRef.current.getStats(),
-            playerRef.current.isFullyLoaded()
+            playerRef.current.isFullyLoaded(),
+            playerRef.current.getActiveSessionsMetadata()
           ]);
 
           setStats({
@@ -384,7 +388,8 @@ const PlayerInfo: React.FC<{ playerRef: React.RefObject<shaka.Player> }> = ({ pl
             presentationStartTime,
             segmentAvailabilityDuration,
             playerStats,
-            isFullyLoaded
+            isFullyLoaded,
+            activeSessionsMetadata
           });
         } catch (err) {
           console.error('Failed to get player stats:', err);
@@ -572,27 +577,30 @@ function App(): JSX.Element {
         <Typography variant="h4" component="h1" gutterBottom>
           Audio Streaming Player
         </Typography>
-
-        <FileUploader onFileUpload={handleFileUpload} loading={loading} />
-        <AudioDevices onGetAudioDevices={handleGetAudioDevices} loading={loading} />
-        {!isStreaming ? (
-          <CaptureAndStream onCaptureAndStream={handleCaptureAndStream} loading={loading} />
-        ) : (
-          <StopStreaming onStopStreaming={handleStopStreaming} loading={loading} />
-        )}
+        <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+          <FileUploader onFileUpload={handleFileUpload} loading={loading} />
+          <AudioDevices onGetAudioDevices={handleGetAudioDevices} loading={loading} />
+          {!isStreaming ? (
+            <CaptureAndStream onCaptureAndStream={handleCaptureAndStream} loading={loading} />
+          ) : (
+            <StopStreaming onStopStreaming={handleStopStreaming} loading={loading} />
+          )}
+        </Box>
         <ErrorAlert error={filesError || playerError} />
 
-        <Box sx={{ display: 'flex', gap: 2 }}>
-          <FileList 
-            files={files} 
-            selectedFile={selectedFile} 
-            onFileSelect={onFileSelect} 
+        <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
+          <FileList
+            files={files}
+            selectedFile={selectedFile}
+            onFileSelect={onFileSelect}
             onFileDelete={handleFileDelete}
           />
+        </Box>
+        <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
           <AudioPlayer videoRef={videoRef} />
         </Box>
       </Box>
-      <Box sx={{ display: 'flex', gap: 2 }}>
+      <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
         <PlayerInfo playerRef={playerRef} />
         <PlayerEvents events={events} />
       </Box>
