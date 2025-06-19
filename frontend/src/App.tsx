@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Container, Box, Typography } from '@mui/material';
-import axios from 'axios';
-import shaka from 'shaka-player';
 
 // Import components
 import FileList from './components/FileList';
@@ -20,10 +18,8 @@ import { useFiles, useAudioPlayer } from './hooks';
 // Import types
 import { AudioFile } from './types';
 
-// Import utilities
-import { sleep } from './utils';
-
-const API_BASE_URL = import.meta.env.VITE_API_URL;
+// Import handlers
+import { FileHandlers, StreamingHandlers } from './handlers';
 
 // Add Shaka Player type definitions
 declare module 'shaka-player' {
@@ -44,77 +40,48 @@ function App(): JSX.Element {
     loadFiles();
   }, [loadFiles]);
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
+    await FileHandlers.handleFileUpload(event, loadFiles);
+  }, [loadFiles]);
 
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      await axios.post(`${API_BASE_URL}/upload`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-      await loadFiles();
-    } catch (err) {
-      console.error('Failed to upload file:', err);
-    }
-  };
-
-  const handleFileDelete = async (file: AudioFile): Promise<void> => {
-    try {
-      await axios.delete(`${API_BASE_URL}/files/${file.name}`);
-      await loadFiles();
-      if (selectedFile?.name === file.name) {
-        setSelectedFile(null);
+  const handleFileDelete = useCallback(async (file: AudioFile): Promise<void> => {
+    await FileHandlers.handleFileDelete(
+      file,
+      selectedFile?.name || null,
+      loadFiles,
+      undefined,
+      () => setSelectedFile(null),
+      async () => {
         if (playerRef.current) {
           await playerRef.current.destroy();
         }
       }
-    } catch (err) {
-      console.error('Failed to delete file:', err);
-    }
-  };
+    );
+  }, [selectedFile, loadFiles, playerRef]);
 
   const onFileSelect = useCallback((file: AudioFile) => {
-    setSelectedFile(file);
-    handleFileSelect(file);
+    FileHandlers.handleFileSelect(file, setSelectedFile, handleFileSelect);
   }, [handleFileSelect]);
 
-  const handleCaptureAndStream = async (): Promise<void> => {
-    try {
-      axios.post(`${API_BASE_URL}/capture-and-stream`);
-      console.log('Capturing and streaming...');
-      setIsStreaming(true);
-      await sleep(5000);
-      await loadFiles();
-      console.log('Files loaded');
-    } catch (err) {
-      console.error('Failed to initialize stream:', err);
-      setIsStreaming(false);
-    }
-  };
+  const handleCaptureAndStream = useCallback(async (): Promise<void> => {
+    await StreamingHandlers.handleCaptureAndStream(
+      () => setIsStreaming(true),
+      () => setIsStreaming(false),
+      loadFiles
+    );
+  }, [loadFiles]);
 
-  const handleStopStreaming = async (): Promise<void> => {
-    try {
-      await axios.post(`${API_BASE_URL}/stop-streaming`);
-      setIsStreaming(false);
-      await loadFiles();
-    } catch (err) {
-      console.error('Failed to stop stream:', err);
-    }
-  };
+  const handleStopStreaming = useCallback(async (): Promise<void> => {
+    await StreamingHandlers.handleStopStreaming(
+      () => setIsStreaming(false),
+      undefined,
+      loadFiles
+    );
+  }, [loadFiles]);
 
-  const handleGetAudioDevices = async (): Promise<void> => {
-    try {
-      const response = await axios.get(`${API_BASE_URL}/audio-devices`);
-      console.log('Audio devices:', response.data);
-    } catch (err) {
-      console.error('Failed to get audio devices:', err);
-    }
-  };
+  const handleGetAudioDevices = useCallback(async (): Promise<void> => {
+    await StreamingHandlers.handleGetAudioDevices();
+  }, []);
 
   return (
     <Container maxWidth="md">
