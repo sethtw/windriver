@@ -3,7 +3,7 @@ import { Container, Box, Typography, Button } from '@mui/material';
 
 // Import components
 import FileList from './components/FileList';
-import AudioPlayer from './components/AudioPlayer';
+import { MultiAudioPlayer } from './components/AudioPlayer';
 import FileUploader from './components/FileUploader';
 import CaptureAndStream from './components/CaptureAndStream';
 import AudioDevices from './components/AudioDevices';
@@ -18,10 +18,10 @@ import {
   useAudioPlayer, 
   useFileUpload, 
   useFileDelete, 
-  useFileSelect,
   useCaptureAndStream,
   useStopStreaming,
-  useAudioDevices
+  useAudioDevices,
+  useActivePlayers
 } from './hooks';
 
 // Import types
@@ -29,25 +29,21 @@ import { AudioFile } from './types';
 
 function App(): JSX.Element {
   const [showPlayerInfo, setShowPlayerInfo] = useState<boolean>(false);
-  const [selectedFile, setSelectedFile] = useState<AudioFile | null>(null);
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
   const videoRef = useRef<HTMLAudioElement>(null);
   
   // Core hooks
   const { files, loading, error: filesError, loadFiles } = useFiles();
-  const { playerRef, error: playerError, events, handleFileSelect: playerHandleFileSelect } = useAudioPlayer(videoRef);
+  const { playerRef, error: playerError, events } = useAudioPlayer(videoRef);
+  const { activePlayers, addPlayer, removePlayer, clearAllPlayers } = useActivePlayers();
   
   // File hooks
   const { handleFileUpload } = useFileUpload(loadFiles);
   const { handleFileDelete } = useFileDelete({
-    selectedFile,
-    setSelectedFile,
+    selectedFile: null, // No longer using single selected file
+    setSelectedFile: () => {}, // No longer using single selected file
     playerRef,
     loadFiles
-  });
-  const { handleFileSelect } = useFileSelect({
-    setSelectedFile,
-    onPlayerFileSelect: playerHandleFileSelect
   });
 
   // Streaming hooks
@@ -65,11 +61,21 @@ function App(): JSX.Element {
     loadFiles();
   }, [loadFiles]);
 
+  // Handle file selection to add to active players
+  const handleFileSelectForPlayer = (file: AudioFile) => {
+    addPlayer(file);
+  };
+
+  // Handle removing a player
+  const handleRemovePlayer = (fileName: string) => {
+    removePlayer(fileName);
+  };
+
   return (
-    <Container maxWidth="md">
+    <Container maxWidth="xl">
       <Box sx={{ my: 4 }}>
         <Typography variant="h4" component="h1" gutterBottom>
-          Audio Streaming Player
+          Multi-Audio Streaming Player
         </Typography>
         <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
           <FileUploader onFileUpload={handleFileUpload} loading={loading} />
@@ -79,19 +85,38 @@ function App(): JSX.Element {
           ) : (
             <StopStreaming onStopStreaming={handleStopStreaming} loading={loading} />
           )}
+          {activePlayers.length > 0 && (
+            <Button 
+              variant="outlined" 
+              color="secondary" 
+              onClick={clearAllPlayers}
+              disabled={loading}
+            >
+              Clear All Players
+            </Button>
+          )}
         </Box>
         <ErrorAlert error={filesError || playerError} />
 
-        <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
-          <FileList
-            files={files}
-            selectedFile={selectedFile}
-            onFileSelect={handleFileSelect}
-            onFileDelete={handleFileDelete}
-          />
-        </Box>
-        <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
-          <AudioPlayer videoRef={videoRef} />
+        <Box sx={{ display: 'flex', gap: 4, mt: 2 }}>
+          <Box sx={{ flex: '0 0 300px' }}>
+            <Typography variant="h6" gutterBottom>
+              Available Files
+            </Typography>
+            <FileList
+              files={files}
+              selectedFile={null}
+              activePlayers={activePlayers}
+              onFileSelect={handleFileSelectForPlayer}
+              onFileDelete={handleFileDelete}
+            />
+          </Box>
+          <Box sx={{ flex: 1 }}>
+            <MultiAudioPlayer
+              activePlayers={activePlayers}
+              onRemovePlayer={handleRemovePlayer}
+            />
+          </Box>
         </Box>
       </Box>
       <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>

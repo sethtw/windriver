@@ -5,4 +5,5 @@ export { useFileDelete } from './useFileDelete';
 export { useFileSelect } from './useFileSelect';
 export { useCaptureAndStream } from './useCaptureAndStream';
 export { useStopStreaming } from './useStopStreaming';
-export { useAudioDevices } from './useAudioDevices'; 
+export { useAudioDevices } from './useAudioDevices';
+export { useActivePlayers } from './useActivePlayers'; 
