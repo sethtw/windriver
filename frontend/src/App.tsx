@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Container, Box, Typography, Button } from '@mui/material';
-import BugReportIcon from '@mui/icons-material/BugReport';
+import { Container, Box, Typography } from '@mui/material';
 
 // Import components
 import FileList from './components/FileList';
@@ -27,7 +26,6 @@ import {
 
 // Import types
 import { AudioFile } from './types';
-import LogViewer from './components/LogViewer';
 
 // Add Shaka Player type definitions
 declare module 'shaka-player' {
