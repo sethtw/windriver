@@ -20,7 +20,10 @@ export const useAudioPlayer = (videoRef: React.RefObject<HTMLAudioElement>) => {
   useEffect(() => {
     shaka.polyfill.installAll();
     if (shaka.Player.isBrowserSupported() && videoRef.current) {
-      const player = new shaka.Player(videoRef.current);
+      // Create player without media element
+      const player = new shaka.Player();
+      // Attach the media element using the attach method
+      player.attach(videoRef.current);
       playerRef.current = player;
 
       // Add event listeners

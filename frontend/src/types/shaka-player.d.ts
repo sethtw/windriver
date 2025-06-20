@@ -1,6 +1,7 @@
 declare module 'shaka-player' {
   export class Player {
-    constructor(video: HTMLMediaElement);
+    constructor(video?: HTMLMediaElement);
+    attach(video: HTMLMediaElement): void;
     load(uri: string): Promise<void>;
     play(): Promise<void>;
     destroy(): Promise<void>;
