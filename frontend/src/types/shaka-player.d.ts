@@ -19,6 +19,8 @@ declare module 'shaka-player' {
     isBuffering(): Promise<boolean>;
     isEnded(): Promise<boolean>;
     isFullyLoaded(): Promise<boolean>;
+    addEventListener(event: string, callback: (event: { detail: any }) => void): void;
+    configure(config: { streaming: { retryParameters: any } }): void;
   }
 
   export namespace polyfill {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Container, Box, Typography } from '@mui/material';
+import { Container, Box, Typography, Button } from '@mui/material';
 
 // Import components
 import FileList from './components/FileList';
@@ -27,15 +27,8 @@ import {
 // Import types
 import { AudioFile } from './types';
 
-// Add Shaka Player type definitions
-declare module 'shaka-player' {
-  interface Player {
-    addEventListener(event: string, callback: (event: { detail: any }) => void): void;
-    configure(config: { streaming: { retryParameters: any } }): void;
-  }
-}
-
 function App(): JSX.Element {
+  const [showPlayerInfo, setShowPlayerInfo] = useState<boolean>(false);
   const [selectedFile, setSelectedFile] = useState<AudioFile | null>(null);
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
   const videoRef = useRef<HTMLAudioElement>(null);
@@ -102,8 +95,15 @@ function App(): JSX.Element {
         </Box>
       </Box>
       <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
-        <PlayerInfo playerRef={playerRef} />
-        <PlayerEvents events={events} />
+        <Button variant="contained" color="primary" onClick={() => setShowPlayerInfo(!showPlayerInfo)}>
+          {showPlayerInfo ? 'Hide Player Info' : 'Show Player Info'}
+        </Button>
+        {showPlayerInfo && (
+          <>
+            <PlayerInfo playerRef={playerRef} />
+            <PlayerEvents events={events} />
+          </>
+        )}
       </Box>
     </Container>
   );
