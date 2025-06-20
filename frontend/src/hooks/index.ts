@@ -1,2 +1,8 @@
 export { useFiles } from './useFiles';
-export { useAudioPlayer } from './useAudioPlayer'; 
+export { useAudioPlayer } from './useAudioPlayer';
+export { useFileUpload } from './useFileUpload';
+export { useFileDelete } from './useFileDelete';
+export { useFileSelect } from './useFileSelect';
+export { useCaptureAndStream } from './useCaptureAndStream';
+export { useStopStreaming } from './useStopStreaming';
+export { useAudioDevices } from './useAudioDevices'; 

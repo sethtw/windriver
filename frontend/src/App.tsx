@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Container, Box, Typography } from '@mui/material';
+import { useState, useEffect, useRef } from 'react';
+import { Container, Box, Typography, Button } from '@mui/material';
+import BugReportIcon from '@mui/icons-material/BugReport';
 
 // Import components
 import FileList from './components/FileList';
@@ -13,13 +14,20 @@ import PlayerEvents from './components/PlayerEvents';
 import PlayerInfo from './components/PlayerInfo';
 
 // Import hooks
-import { useFiles, useAudioPlayer } from './hooks';
+import { 
+  useFiles, 
+  useAudioPlayer, 
+  useFileUpload, 
+  useFileDelete, 
+  useFileSelect,
+  useCaptureAndStream,
+  useStopStreaming,
+  useAudioDevices
+} from './hooks';
 
 // Import types
 import { AudioFile } from './types';
-
-// Import handlers
-import { FileHandlers, StreamingHandlers } from './handlers';
+import LogViewer from './components/LogViewer';
 
 // Add Shaka Player type definitions
 declare module 'shaka-player' {
@@ -33,55 +41,38 @@ function App(): JSX.Element {
   const [selectedFile, setSelectedFile] = useState<AudioFile | null>(null);
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
   const videoRef = useRef<HTMLAudioElement>(null);
+  
+  // Core hooks
   const { files, loading, error: filesError, loadFiles } = useFiles();
-  const { playerRef, error: playerError, events, handleFileSelect } = useAudioPlayer(videoRef);
+  const { playerRef, error: playerError, events, handleFileSelect: playerHandleFileSelect } = useAudioPlayer(videoRef);
+  
+  // File hooks
+  const { handleFileUpload } = useFileUpload(loadFiles);
+  const { handleFileDelete } = useFileDelete({
+    selectedFile,
+    setSelectedFile,
+    playerRef,
+    loadFiles
+  });
+  const { handleFileSelect } = useFileSelect({
+    setSelectedFile,
+    onPlayerFileSelect: playerHandleFileSelect
+  });
+
+  // Streaming hooks
+  const { handleCaptureAndStream } = useCaptureAndStream({
+    setIsStreaming,
+    loadFiles
+  });
+  const { handleStopStreaming } = useStopStreaming({
+    setIsStreaming,
+    loadFiles
+  });
+  const { handleGetAudioDevices } = useAudioDevices();
 
   useEffect(() => {
     loadFiles();
   }, [loadFiles]);
-
-  const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
-    await FileHandlers.handleFileUpload(event, loadFiles);
-  }, [loadFiles]);
-
-  const handleFileDelete = useCallback(async (file: AudioFile): Promise<void> => {
-    await FileHandlers.handleFileDelete(
-      file,
-      selectedFile?.name || null,
-      loadFiles,
-      undefined,
-      () => setSelectedFile(null),
-      async () => {
-        if (playerRef.current) {
-          await playerRef.current.destroy();
-        }
-      }
-    );
-  }, [selectedFile, loadFiles, playerRef]);
-
-  const onFileSelect = useCallback((file: AudioFile) => {
-    FileHandlers.handleFileSelect(file, setSelectedFile, handleFileSelect);
-  }, [handleFileSelect]);
-
-  const handleCaptureAndStream = useCallback(async (): Promise<void> => {
-    await StreamingHandlers.handleCaptureAndStream(
-      () => setIsStreaming(true),
-      () => setIsStreaming(false),
-      loadFiles
-    );
-  }, [loadFiles]);
-
-  const handleStopStreaming = useCallback(async (): Promise<void> => {
-    await StreamingHandlers.handleStopStreaming(
-      () => setIsStreaming(false),
-      undefined,
-      loadFiles
-    );
-  }, [loadFiles]);
-
-  const handleGetAudioDevices = useCallback(async (): Promise<void> => {
-    await StreamingHandlers.handleGetAudioDevices();
-  }, []);
 
   return (
     <Container maxWidth="md">
@@ -104,7 +95,7 @@ function App(): JSX.Element {
           <FileList
             files={files}
             selectedFile={selectedFile}
-            onFileSelect={onFileSelect}
+            onFileSelect={handleFileSelect}
             onFileDelete={handleFileDelete}
           />
         </Box>

@@ -1,6 +1,5 @@
 import { AudioFile } from '../types';
 import { ApiService } from '../services/api';
-import { sleep } from '../utils';
 
 /**
  * File operation handlers for managing audio files
