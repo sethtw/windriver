@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Typography, Paper, Box } from '@mui/material';
 import shaka from 'shaka-player';
 import { PlayerStats } from '../../types';
@@ -20,49 +20,50 @@ const PlayerInfo: React.FC<PlayerInfoProps> = ({ playerRef }) => {
     activeSessionsMetadata: null
   });
 
+  const updateStats = useCallback(async () => {
+    if (!playerRef.current) return;
+    
+    try {
+      const [
+        bufferFullness,
+        playbackRate,
+        playheadTime,
+        fetchedPlaybackInfo,
+        presentationStartTime,
+        segmentAvailabilityDuration,
+        playerStats,
+        isFullyLoaded,
+        activeSessionsMetadata
+      ] = await Promise.all([
+        playerRef.current.getBufferFullness(),
+        playerRef.current.getPlaybackRate(),
+        playerRef.current.getPlayheadTimeAsDate(),
+        playerRef.current.getFetchedPlaybackInfo(),
+        playerRef.current.getPresentationStartTimeAsDate(),
+        playerRef.current.getSegmentAvailabilityDuration(),
+        playerRef.current.getStats(),
+        playerRef.current.isFullyLoaded(),
+        playerRef.current.getActiveSessionsMetadata()
+      ]);
+
+      setStats({
+        bufferFullness,
+        playbackRate,
+        playheadTime,
+        fetchedPlaybackInfo,
+        presentationStartTime,
+        segmentAvailabilityDuration,
+        playerStats,
+        isFullyLoaded,
+        activeSessionsMetadata
+      });
+    } catch (err) {
+      console.error('Failed to get player stats:', err);
+      // Don't update stats on error to avoid showing stale data
+    }
+  }, [playerRef]);
+
   useEffect(() => {
-    const updateStats = async () => {
-      if (playerRef.current) {
-        try {
-          const [
-            bufferFullness,
-            playbackRate,
-            playheadTime,
-            fetchedPlaybackInfo,
-            presentationStartTime,
-            segmentAvailabilityDuration,
-            playerStats,
-            isFullyLoaded,
-            activeSessionsMetadata
-          ] = await Promise.all([
-            playerRef.current.getBufferFullness(),
-            playerRef.current.getPlaybackRate(),
-            playerRef.current.getPlayheadTimeAsDate(),
-            playerRef.current.getFetchedPlaybackInfo(),
-            playerRef.current.getPresentationStartTimeAsDate(),
-            playerRef.current.getSegmentAvailabilityDuration(),
-            playerRef.current.getStats(),
-            playerRef.current.isFullyLoaded(),
-            playerRef.current.getActiveSessionsMetadata()
-          ]);
-
-          setStats({
-            bufferFullness,
-            playbackRate,
-            playheadTime,
-            fetchedPlaybackInfo,
-            presentationStartTime,
-            segmentAvailabilityDuration,
-            playerStats,
-            isFullyLoaded,
-            activeSessionsMetadata
-          });
-        } catch (err) {
-          console.error('Failed to get player stats:', err);
-        }
-      }
-    };
-
     // Update immediately
     updateStats();
 
@@ -70,7 +71,7 @@ const PlayerInfo: React.FC<PlayerInfoProps> = ({ playerRef }) => {
     const interval = setInterval(updateStats, 1000);
 
     return () => clearInterval(interval);
-  }, [playerRef]);
+  }, [updateStats]);
 
   return (
     <Paper 

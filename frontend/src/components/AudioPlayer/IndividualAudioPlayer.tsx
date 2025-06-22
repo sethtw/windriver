@@ -16,12 +16,14 @@ const IndividualAudioPlayer: React.FC<IndividualAudioPlayerProps> = ({ file, onR
   const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(0);
+  const [isPlayerInitialized, setIsPlayerInitialized] = useState<boolean>(false);
 
   const API_BASE_URL = import.meta.env.VITE_API_URL;
 
+  // Initialize Shaka player once
   useEffect(() => {
     shaka.polyfill.installAll();
-    if (shaka.Player.isBrowserSupported() && audioRef.current) {
+    if (shaka.Player.isBrowserSupported() && audioRef.current && !isPlayerInitialized) {
       const player = new shaka.Player();
       player.attach(audioRef.current);
       playerRef.current = player;
@@ -43,44 +45,44 @@ const IndividualAudioPlayer: React.FC<IndividualAudioPlayerProps> = ({ file, onR
         });
       });
 
-      // Load the file
-      loadFile();
+      setIsPlayerInitialized(true);
     }
 
     return () => {
       if (playerRef.current) {
         playerRef.current.destroy();
+        setIsPlayerInitialized(false);
       }
     };
-  }, [file]);
+  }, []); // No dependencies - only run once
 
   const loadFile = useCallback(async () => {
+    if (!playerRef.current || !isPlayerInitialized) return;
+    
     setError(null);
     try {
-      if (playerRef.current) {
-        const streamId = `${API_BASE_URL}${file.manifest_url}`;
-        console.log(`Loading ${file.name} from:`, streamId);
-        
-        playerRef.current.addEventListener('error', (event: { detail: any }) => {
-          console.error(`Player ${file.name} error:`, event.detail);
-          setError(`Player error: ${event.detail.code} - ${event.detail.message}`);
-        });
+      const streamId = `${API_BASE_URL}${file.manifest_url}`;
+      console.log(`Loading ${file.name} from:`, streamId);
+      
+      playerRef.current.addEventListener('error', (event: { detail: any }) => {
+        console.error(`Player ${file.name} error:`, event.detail);
+        setError(`Player error: ${event.detail.code} - ${event.detail.message}`);
+      });
 
-        playerRef.current.configure({
-          streaming: {
-            retryParameters: {
-              timeout: 10000,
-              maxAttempts: 3,
-              baseDelay: 1000,
-              backoffFactor: 2,
-              fuzzFactor: 0.5
-            }
+      playerRef.current.configure({
+        streaming: {
+          retryParameters: {
+            timeout: 10000,
+            maxAttempts: 3,
+            baseDelay: 1000,
+            backoffFactor: 2,
+            fuzzFactor: 0.5
           }
-        });
+        }
+      });
 
-        await playerRef.current.load(streamId);
-        console.log(`Stream ${file.name} initialized`);
-      }
+      await playerRef.current.load(streamId);
+      console.log(`Stream ${file.name} initialized`);
     } catch (err: any) {
       console.error(`Error loading ${file.name}:`, err);
       if (err.code && err.message) {
@@ -89,7 +91,14 @@ const IndividualAudioPlayer: React.FC<IndividualAudioPlayerProps> = ({ file, onR
         setError('Failed to load file');
       }
     }
-  }, [file, API_BASE_URL]);
+  }, [file, API_BASE_URL, isPlayerInitialized]);
+
+  // Load file when player is initialized and file changes
+  useEffect(() => {
+    if (isPlayerInitialized) {
+      loadFile();
+    }
+  }, [isPlayerInitialized, loadFile]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -134,11 +143,37 @@ const IndividualAudioPlayer: React.FC<IndividualAudioPlayerProps> = ({ file, onR
     const volumeStep = startVolume / steps;
 
     const fadeInterval = setInterval(() => {
-      if (audio.volume > volumeStep) {
+      if (audio.volume > (0 + volumeStep)) {
         audio.volume -= volumeStep;
       } else {
         audio.volume = 0;
         audio.pause();
+        clearInterval(fadeInterval);
+      }
+    }, stepDuration);
+  };
+
+  const fadeIn = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const targetVolume = audio.volume > 0 ? audio.volume : 1;
+    const startVolume = 0.001;
+    const duration = 5000; // 5 seconds
+    const steps = 50; // 50 steps for smooth fade
+    const stepDuration = duration / steps;
+    const volumeStep = (targetVolume - startVolume) / steps;
+
+    // Set initial volume to 0 and play the audio
+    audio.volume = startVolume;
+    audio.play();
+
+    const fadeInterval = setInterval(() => {
+      // Fade in the audio
+      if (audio.volume < (targetVolume - volumeStep)) {
+        audio.volume += volumeStep;
+      } else {
+        audio.volume = targetVolume;
         clearInterval(fadeInterval);
       }
     }, stepDuration);
@@ -194,6 +229,14 @@ const IndividualAudioPlayer: React.FC<IndividualAudioPlayerProps> = ({ file, onR
           onClick={handlePlayPause}
         >
           {isPlaying ? 'Pause' : 'Play'}
+        </Button>
+        <Button 
+          variant="outlined" 
+          color="secondary" 
+          size="small"
+          onClick={fadeIn}
+        >
+          Fade In
         </Button>
         <Button 
           variant="outlined" 

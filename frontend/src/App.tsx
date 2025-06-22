@@ -59,7 +59,7 @@ function App(): JSX.Element {
 
   useEffect(() => {
     loadFiles();
-  }, [loadFiles]);
+  }, []);
 
   // Handle file selection to add to active players
   const handleFileSelectForPlayer = (file: AudioFile) => {
