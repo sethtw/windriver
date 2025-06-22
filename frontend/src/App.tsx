@@ -75,7 +75,7 @@ function App(): JSX.Element {
     <Container maxWidth="xl">
       <Box sx={{ my: 4 }}>
         <Typography variant="h4" component="h1" gutterBottom>
-          Multi-Audio Streaming Player
+          Wind River
         </Typography>
         <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
           <FileUploader onFileUpload={handleFileUpload} loading={loading} />
