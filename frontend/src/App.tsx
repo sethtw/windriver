@@ -3,7 +3,7 @@ import { Container, Box, Typography, Button } from '@mui/material';
 
 // Import components
 import FileList from './components/FileList';
-import { MultiAudioPlayer } from './components/AudioPlayer';
+import { DraggableAudioPlayer } from './components/AudioPlayer';
 import FileUploader from './components/FileUploader';
 import CaptureAndStream from './components/CaptureAndStream';
 import AudioDevices from './components/AudioDevices';
@@ -112,7 +112,7 @@ function App(): JSX.Element {
             />
           </Box>
           <Box sx={{ flex: 1 }}>
-            <MultiAudioPlayer
+            <DraggableAudioPlayer
               activePlayers={activePlayers}
               onRemovePlayer={handleRemovePlayer}
             />
