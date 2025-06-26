@@ -8,7 +8,6 @@ import { Item } from '../DragAndDropper/DraggableCard';
 import { useGroupManager, type Group } from '../../hooks/useGroupManager';
 import { generateColor } from '../../utils/dragAndDropUtils';
 import IndividualAudioPlayer from './IndividualAudioPlayer';
-import { logger } from '../../services/logging';
 
 interface DraggableAudioPlayerProps {
   activePlayers: AudioFile[];
@@ -48,7 +47,7 @@ const DraggableAudioPlayer: React.FC<DraggableAudioPlayerProps> = ({
       groupItems[groupId] = [item];
     });
 
-    logger.info('DraggableAudioPlayer: Updated activePlayers', {
+    console.log('DraggableAudioPlayer: Updated activePlayers', {
       activePlayersCount: activePlayers.length,
       groupsCount: groups.length,
       groupItemsKeys: Object.keys(groupItems)
@@ -65,7 +64,7 @@ const DraggableAudioPlayer: React.FC<DraggableAudioPlayerProps> = ({
     transferItem,
   } = useGroupManager({ initialGroups, initialGroupItems });
 
-  logger.info('DraggableAudioPlayer: Current state', {
+  console.log('DraggableAudioPlayer: Current state', {
     groupsCount: groups.length,
     groupItemsCount: Object.keys(groupItems).length
   });

@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Typography, Paper, Box } from '@mui/material';
 import shaka from 'shaka-player';
 import { PlayerStats } from '../../types';
-import { logger } from '../../services/logging';
 
 interface PlayerInfoProps {
   playerRef: React.RefObject<shaka.Player>;
@@ -59,7 +58,7 @@ const PlayerInfo: React.FC<PlayerInfoProps> = ({ playerRef }) => {
         activeSessionsMetadata
       });
     } catch (err) {
-      logger.info('Failed to get player stats', { errorDetails: String(err) });
+      console.error('Failed to get player stats:', err);
       // Don't update stats on error to avoid showing stale data
     }
   }, [playerRef]);

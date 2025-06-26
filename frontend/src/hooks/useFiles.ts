@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react';
 import axios, { AxiosError } from 'axios';
 import { AudioFile } from '../types';
-import { logger } from '../services/logging';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL;
 
@@ -21,7 +20,7 @@ export const useFiles = () => {
       } else {
         setError('Failed to load files');
       }
-      logger.error('Failed to load files', undefined, { error: err });
+      console.error(err);
     } finally {
       setLoading(false);
     }

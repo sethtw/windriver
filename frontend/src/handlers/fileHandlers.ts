@@ -1,6 +1,5 @@
 import { AudioFile } from '../types';
 import { ApiService } from '../services/api';
-import { logger } from '../services/logging';
 
 /**
  * File operation handlers for managing audio files
@@ -21,7 +20,7 @@ export class FileHandlers {
       await ApiService.uploadFile(file);
       onSuccess?.();
     } catch (err) {
-      logger.error('Failed to upload file', undefined, { error: err });
+      console.error('Failed to upload file:', err);
       onError?.(err);
     }
   }
@@ -47,7 +46,7 @@ export class FileHandlers {
         onPlayerDestroy?.();
       }
     } catch (err) {
-      logger.error('Failed to delete file', undefined, { error: err });
+      console.error('Failed to delete file:', err);
       onError?.(err);
     }
   }
