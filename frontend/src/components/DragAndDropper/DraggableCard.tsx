@@ -1,5 +1,6 @@
 import { useRef, useCallback } from 'react'
 import { type DragSourceMonitor, type DropTargetMonitor, useDrag, useDrop } from 'react-dnd'
+import { useThrottledOperation, createSimpleDropCollect, type DragItem } from '../../utils/dragAndDropUtils'
 import './DraggableComponents.css'
 
 export interface Item {
@@ -20,7 +21,8 @@ export const ItemTypes = {
 interface DraggableCardProps {
   item: Item
   index: number
-  moveCard: (dragIndex: number, hoverIndex: number) => void
+  moveCard: (id: string, atIndex: number) => void
+  findCard: (id: string) => { card: Item; index: number }
   groupId: string
   transferItem?: (item: Item, targetGroupId: string) => void
   isSingleItemGroup?: boolean
@@ -32,142 +34,94 @@ const DraggableCard = ({
   item, 
   index, 
   moveCard,
+  findCard,
   groupId,
   transferItem,
   isSingleItemGroup = false,
   renderItem
 }: DraggableCardProps) => {
   const ref = useRef<HTMLDivElement>(null)
-  const lastMoveRef = useRef<{ dragId: string; targetGroupId: string } | null>(null)
-  const lastHoverIndexRef = useRef<number | null>(null)
-  const lastHoverTimeRef = useRef<number>(0)
+  const { throttledOperation, resetThrottle } = useThrottledOperation()
 
-  // Throttled move function to prevent rapid updates
-  const throttledMoveCard = useCallback((dragIndex: number, hoverIndex: number) => {
-    const now = Date.now()
-    const throttleDelay = 100 // 100ms throttle
-    
-    // Check if we should throttle this move
-    if (now - lastHoverTimeRef.current < throttleDelay) {
-      return
-    }
-    
-    // Check if the hover index has actually changed
-    if (lastHoverIndexRef.current === hoverIndex) {
-      return
-    }
-    
-    lastHoverTimeRef.current = now
-    lastHoverIndexRef.current = hoverIndex
-    moveCard(dragIndex, hoverIndex)
-  }, [moveCard])
+  // Throttled move function
+  const throttledMoveCard = useCallback((id: string, atIndex: number) => {
+    throttledOperation(() => moveCard(id, atIndex), `move-${id}-${atIndex}`)
+  }, [moveCard, throttledOperation])
 
-  const [{ isDragging }, drag] = useDrag({
-    type: ItemTypes.CARD,
-    item: item,
-    end: () => {
-      // Reset refs when drag ends
-      lastHoverIndexRef.current = null
-      lastHoverTimeRef.current = 0
-    },
-    collect: (monitor: DragSourceMonitor) => ({
-      canDrag: monitor.canDrag(),
-      dropResult: monitor.getDropResult(),
-      isDragging: monitor.isDragging(),
-      dragItem: monitor.getItem(),
-      dragItemType: monitor.getItemType(),
-      potentialDropTargets: monitor.getTargetIds(),
-      handlerId: monitor.getHandlerId(),
-      receiveHandlerId: monitor.receiveHandlerId,
-    }),
-  })
-
-  const [{ isOver }, drop] = useDrop({
-    accept: ItemTypes.CARD,
-    hover: (draggedItem: any, monitor) => {
-      if (!ref.current) {
-        return
-      }
-      const dragIndex = draggedItem.index
-      const hoverIndex = index
-      const sourceGroupId = draggedItem.groupId
-      const targetGroupId = groupId
-
-      // Don't replace items with themselves
-      if (dragIndex === hoverIndex && sourceGroupId === targetGroupId) {
-        return
-      }
-
-      // If moving between different groups
-      if (sourceGroupId !== targetGroupId) {
-        // If this is a single item group and we have transferItem function, handle the transfer
-        if (isSingleItemGroup && transferItem) {
-          // Check if we've already moved this item to this target group
-          if (lastMoveRef.current?.dragId === draggedItem.id && 
-              lastMoveRef.current?.targetGroupId === targetGroupId) {
-            return
-          }
-          
-          transferItem(draggedItem, targetGroupId)
-          lastMoveRef.current = { dragId: draggedItem.id, targetGroupId }
+  const [{ isDragging }, drag] = useDrag(
+    () => ({
+      type: ItemTypes.CARD,
+      item: { 
+        id: item.id, 
+        originalIndex: index, 
+        groupId: item.groupId, 
+        text: item.text, 
+        color: item.color,
+        audioFile: item.audioFile,
+        metadata: item.metadata
+      } as DragItem,
+      collect: (monitor: DragSourceMonitor) => ({
+        isDragging: monitor.isDragging()
+      }),
+      end: (item: any, monitor) => {
+        const { id: droppedId, originalIndex } = item
+        const didDrop = monitor.didDrop()
+        if (!didDrop) {
+          moveCard(droppedId, originalIndex)
         }
-        return
-      }
-
-      // Determine rectangle on screen
-      const hoverBoundingRect = ref.current?.getBoundingClientRect()
-
-      // Get vertical middle
-      const hoverMiddleY = (hoverBoundingRect.bottom - hoverBoundingRect.top) / 2
-
-      // Determine mouse position
-      const clientOffset = monitor.getClientOffset()
-      const hoverClientY = clientOffset!.y - hoverBoundingRect.top
-
-      // Only perform the move when the mouse has crossed half of the items height
-      // When dragging downwards, only move when the cursor is below 50%
-      // When dragging upwards, only move when the cursor is above 50%
-
-      // Dragging downwards
-      if (dragIndex < hoverIndex && hoverClientY < hoverMiddleY) {
-        return
-      }
-
-      // Dragging upwards
-      if (dragIndex > hoverIndex && hoverClientY > hoverMiddleY) {
-        return
-      }
-
-      // Use throttled move function
-      throttledMoveCard(dragIndex, hoverIndex)
-      
-      // Note: we're mutating the monitor item here!
-      // Generally it's better to avoid mutations,
-      // but it's good here for the sake of performance
-      // to avoid expensive index searches.
-      draggedItem.index = hoverIndex
-    },
-    drop: () => {
-      // Reset the last move reference when the drag operation ends
-      lastMoveRef.current = null
-      lastHoverIndexRef.current = null
-      lastHoverTimeRef.current = 0
-      return { dropped: true }
-    },
-    collect: (monitor: DropTargetMonitor) => ({
-      isOver: monitor.isOver(),
-      dropResult: monitor.getDropResult(),
-      canDrop: monitor.canDrop(),
-      isOverCurrent: monitor.isOver({ shallow: false }),
-      isOverCurrentShallow: monitor.isOver({ shallow: true }),
-      item: monitor.getItem(),
-      itemType: monitor.getItemType(),
-      isOverTarget: monitor.isOver({ shallow: false }),
-      isOverTargetShallow: monitor.isOver({ shallow: true }),
-      handlerId: monitor.getHandlerId(),
-      receiveHandlerId: monitor.receiveHandlerId,
+        resetThrottle()
+      },
     }),
-  })
+    [item.id, index, moveCard, resetThrottle],
+  )
+
+  const [{ isOver }, drop] = useDrop(
+    () => ({
+      accept: ItemTypes.CARD,
+      hover: (draggedItem: DragItem, monitor) => {
+        if (!ref.current) return
+        
+        const dragIndex = draggedItem.originalIndex
+        const hoverIndex = index
+        const sourceGroupId = draggedItem.groupId
+        const targetGroupId = groupId
+
+        // Don't replace items with themselves
+        if (dragIndex === hoverIndex && sourceGroupId === targetGroupId) return
+
+        // If moving between different groups
+        if (sourceGroupId !== targetGroupId) {
+          if (isSingleItemGroup && transferItem) {
+            throttledOperation(
+              () => transferItem(draggedItem, targetGroupId),
+              `transfer-${draggedItem.id}-${targetGroupId}`
+            )
+          }
+          return
+        }
+
+        // Determine rectangle on screen
+        const hoverBoundingRect = ref.current.getBoundingClientRect()
+        const hoverMiddleY = (hoverBoundingRect.bottom - hoverBoundingRect.top) / 2
+        const clientOffset = monitor.getClientOffset()
+        const hoverClientY = clientOffset!.y - hoverBoundingRect.top
+
+        // Only perform the move when the mouse has crossed half of the items height
+        if (dragIndex < hoverIndex && hoverClientY < hoverMiddleY) return
+        if (dragIndex > hoverIndex && hoverClientY > hoverMiddleY) return
+
+        // Use throttled move function
+        throttledMoveCard(draggedItem.id, hoverIndex)
+        draggedItem.originalIndex = hoverIndex
+      },
+      drop: () => {
+        resetThrottle()
+        return { dropped: true }
+      },
+      collect: (monitor: DropTargetMonitor) => createSimpleDropCollect().isOver(monitor),
+    }),
+    [findCard, moveCard, index, groupId, transferItem, isSingleItemGroup, throttledMoveCard, resetThrottle],
+  )
 
   drag(drop(ref))
 

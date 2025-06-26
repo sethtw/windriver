@@ -1,10 +1,12 @@
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { Box, Typography, Paper } from '@mui/material';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import GroupManager from '../DragAndDropper/GroupManager';
 import { AudioFile } from '../../types';
 import { Item } from '../DragAndDropper/DraggableCard';
+import { useGroupManager, type Group } from '../../hooks/useGroupManager';
+import { generateColor } from '../../utils/dragAndDropUtils';
 import IndividualAudioPlayer from './IndividualAudioPlayer';
 
 interface DraggableAudioPlayerProps {
@@ -12,29 +14,29 @@ interface DraggableAudioPlayerProps {
   onRemovePlayer: (fileName: string) => void;
 }
 
-interface Group {
-  id: string;
-  title: string;
-  backgroundColor: string;
-}
-
 const DraggableAudioPlayer: React.FC<DraggableAudioPlayerProps> = ({ 
   activePlayers, 
   onRemovePlayer 
 }) => {
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [groupItems, setGroupItems] = useState<Record<string, Item[]>>({});
+  // Convert AudioFiles to initial groups and items
+  const { initialGroups, initialGroupItems } = useMemo(() => {
+    if (activePlayers.length === 0) {
+      return { initialGroups: [], initialGroupItems: {} };
+    }
 
-  // Convert AudioFiles to Items for drag and drop
-  const convertAudioFilesToItems = useCallback((files: AudioFile[]): Record<string, Item[]> => {
-    const items: Record<string, Item[]> = {};
-    
-    files.forEach((file, index) => {
+    const groups: Group[] = activePlayers.map((file, index) => ({
+      id: `group-${index}`,
+      title: file.name,
+      backgroundColor: generateColor(index, 70, 90)
+    }));
+
+    const groupItems: Record<string, Item[]> = {};
+    activePlayers.forEach((file, index) => {
       const groupId = `group-${index}`;
       const item: Item = {
         id: file.name,
         text: file.name,
-        color: `hsl(${(index * 137.5) % 360}, 70%, 60%)`, // Generate different colors
+        color: generateColor(index, 70, 60),
         groupId,
         audioFile: file,
         metadata: {
@@ -42,72 +44,30 @@ const DraggableAudioPlayer: React.FC<DraggableAudioPlayerProps> = ({
           index
         }
       };
-      
-      items[groupId] = [item];
+      groupItems[groupId] = [item];
     });
-    
-    return items;
-  }, []);
 
-  // Create initial groups from active players
-  const createInitialGroups = useCallback((files: AudioFile[]): Group[] => {
-    return files.map((file, index) => ({
-      id: `group-${index}`,
-      title: file.name,
-      backgroundColor: `hsl(${(index * 137.5) % 360}, 70%, 90%)`
-    }));
-  }, []);
-
-  // Update groups and items when activePlayers change
-  useEffect(() => {
-    if (activePlayers.length === 0) {
-      setGroups([]);
-      setGroupItems({});
-      return;
-    }
-
-    const newGroups = createInitialGroups(activePlayers);
-    const newGroupItems = convertAudioFilesToItems(activePlayers);
-
-    setGroups(newGroups);
-    setGroupItems(newGroupItems);
-  }, [activePlayers, createInitialGroups, convertAudioFilesToItems]);
-
-  // Move item within a group
-  const moveItemInGroup = useCallback((groupId: string, dragIndex: number, hoverIndex: number) => {
-    setGroupItems(prev => {
-      const newGroupItems = { ...prev };
-      const items = [...newGroupItems[groupId]];
-      const draggedItem = items[dragIndex];
-      
-      if (!draggedItem) return prev;
-      
-      items.splice(dragIndex, 1);
-      items.splice(hoverIndex, 0, draggedItem);
-      
-      newGroupItems[groupId] = items;
-      return newGroupItems;
+    console.log('DraggableAudioPlayer: Updated activePlayers', {
+      activePlayersCount: activePlayers.length,
+      groupsCount: groups.length,
+      groupItemsKeys: Object.keys(groupItems)
     });
-  }, []);
 
-  // Transfer item between groups
-  const transferItem = useCallback((item: Item, targetGroupId: string) => {
-    setGroupItems(prev => {
-      const newGroupItems = { ...prev };
-      const sourceGroupId = item.groupId;
-      
-      // Add to target group with updated groupId
-      const updatedItem = { ...item, groupId: targetGroupId };
-      newGroupItems[targetGroupId] = [...(newGroupItems[targetGroupId] || []), updatedItem];
-      
-      // Remove from source group
-      if (newGroupItems[sourceGroupId]) {
-        newGroupItems[sourceGroupId] = newGroupItems[sourceGroupId].filter(i => i.id !== item.id);
-      }
-      
-      return newGroupItems;
-    });
-  }, []);
+    return { initialGroups: groups, initialGroupItems: groupItems };
+  }, [activePlayers]);
+
+  const {
+    groups,
+    groupItems,
+    moveItemInGroup,
+    findCard,
+    transferItem,
+  } = useGroupManager({ initialGroups, initialGroupItems });
+
+  console.log('DraggableAudioPlayer: Current state', {
+    groupsCount: groups.length,
+    groupItemsCount: Object.keys(groupItems).length
+  });
 
   // Custom render function for audio items
   const renderAudioItem = useCallback((item: Item) => {
@@ -120,9 +80,9 @@ const DraggableAudioPlayer: React.FC<DraggableAudioPlayerProps> = ({
             backgroundColor: item.color,
             borderRadius: 8,
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'white',
+            alignItems: 'left',
+            justifyContent: 'left',
+            color: 'grey',
             fontWeight: 'bold',
             fontSize: '16px',
             boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
@@ -136,7 +96,7 @@ const DraggableAudioPlayer: React.FC<DraggableAudioPlayerProps> = ({
     }
 
     return (
-      <Box sx={{ width: 300, minHeight: 200 }}>
+      <Box sx={{ minWidth: 400, minHeight: 200 }}>
         <IndividualAudioPlayer
           file={item.audioFile}
           onRemove={onRemovePlayer}
@@ -173,12 +133,12 @@ const DraggableAudioPlayer: React.FC<DraggableAudioPlayerProps> = ({
           groups={groups}
           groupItems={groupItems}
           moveItemInGroup={moveItemInGroup}
+          findCard={findCard}
           transferItem={transferItem}
           renderItem={renderAudioItem}
           containerStyle={{
-            maxHeight: '70vh',
-            overflowY: 'auto',
-            padding: '16px'
+            padding: '16px',
+            alignItems: 'left'
           }}
         />
       </Box>

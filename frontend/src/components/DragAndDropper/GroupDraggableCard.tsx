@@ -2,13 +2,15 @@ import { useRef, useCallback } from 'react'
 import { type DragSourceMonitor, type DropTargetMonitor, useDrag, useDrop } from 'react-dnd'
 import DraggableCard, { ItemTypes } from './DraggableCard'
 import type { Item } from './DraggableCard'
+import { useThrottledOperation, createSimpleDropCollect, type DragItem } from '../../utils/dragAndDropUtils'
 import './DraggableComponents.css'
 
 interface GroupDraggableCardProps {
   groupId: string
   title: string
   items: Item[]
-  moveCard: (dragIndex: number, hoverIndex: number) => void
+  moveCard: (id: string, atIndex: number) => void
+  findCard: (id: string) => { card: Item; index: number }
   transferItem?: (item: Item, targetGroupId: string) => void
   backgroundColor?: string
   renderItem?: (item: Item) => React.ReactNode
@@ -19,37 +21,21 @@ const GroupDraggableCard = ({
   title, 
   items, 
   moveCard,
+  findCard,
   transferItem,
   backgroundColor = '#f8f9fa',
   renderItem
 }: GroupDraggableCardProps) => {
   const ref = useRef<HTMLDivElement>(null)
-  const lastMoveRef = useRef<{ dragId: string; targetGroupId: string } | null>(null)
-  const lastHoverTimeRef = useRef<number>(0)
+  const { throttledOperation, resetThrottle } = useThrottledOperation()
 
-  // Throttled transfer function to prevent rapid updates
-  const throttledTransferItem = useCallback((draggedItem: any, targetGroupId: string) => {
-    const now = Date.now()
-    const throttleDelay = 100 // 100ms throttle
-    
-    // Check if we should throttle this transfer
-    if (now - lastHoverTimeRef.current < throttleDelay) {
-      return
-    }
-    
-    // Check if we've already moved this item to this target group
-    if (lastMoveRef.current?.dragId === draggedItem.id && 
-        lastMoveRef.current?.targetGroupId === targetGroupId) {
-      return
-    }
-    
-    lastHoverTimeRef.current = now
-    lastMoveRef.current = { dragId: draggedItem.id, targetGroupId }
-    
-    if (transferItem) {
-      transferItem(draggedItem, targetGroupId)
-    }
-  }, [transferItem])
+  // Throttled transfer function
+  const throttledTransferItem = useCallback((draggedItem: DragItem, targetGroupId: string) => {
+    throttledOperation(
+      () => transferItem?.(draggedItem, targetGroupId),
+      `transfer-${draggedItem.id}-${targetGroupId}`
+    )
+  }, [transferItem, throttledOperation])
 
   const [{ }, drag] = useDrag({
     type: ItemTypes.GROUP,
@@ -61,40 +47,23 @@ const GroupDraggableCard = ({
 
   const [{ isOver }, drop] = useDrop({
     accept: ItemTypes.CARD,
-    hover: (draggedItem: any) => {
-      if (!ref.current) {
-        return
-      }
+    hover: (draggedItem: DragItem) => {
+      if (!ref.current) return
+      
       const sourceGroupId = draggedItem.groupId
       const targetGroupId = groupId
 
       // If dropping on the same group, let the card handle the drop
-      if (sourceGroupId === targetGroupId) {
-        return
-      }
+      if (sourceGroupId === targetGroupId) return
 
       // Use throttled transfer function
       throttledTransferItem(draggedItem, targetGroupId)
     },
     drop: () => {
-      // Reset the last move reference when the drag operation ends
-      lastMoveRef.current = null
-      lastHoverTimeRef.current = 0
+      resetThrottle()
       return { dropped: true }
     },
-    collect: (monitor: DropTargetMonitor) => ({
-      isOver: monitor.isOver(),
-      dropResult: monitor.getDropResult(),
-      canDrop: monitor.canDrop(),
-      isOverCurrent: monitor.isOver({ shallow: false }),
-      isOverCurrentShallow: monitor.isOver({ shallow: true }),
-      item: monitor.getItem(),
-      itemType: monitor.getItemType(),
-      isOverTarget: monitor.isOver({ shallow: false }),
-      isOverTargetShallow: monitor.isOver({ shallow: true }),
-      handlerId: monitor.getHandlerId(),
-      receiveHandlerId: monitor.receiveHandlerId,
-    }),
+    collect: (monitor: DropTargetMonitor) => createSimpleDropCollect().isOver(monitor),
   })
 
   drag(drop(ref))
@@ -109,6 +78,7 @@ const GroupDraggableCard = ({
         padding: 20,
         margin: 16,
         minHeight: 200,
+        width: '100%',
         border: isOver ? '3px dashed #007bff' : '2px solid #dee2e6',
         transition: 'all 0.2s ease',
         boxShadow: isOver ? '0 4px 12px rgba(0,123,255,0.3)' : '0 2px 8px rgba(0,0,0,0.1)',
@@ -148,6 +118,7 @@ const GroupDraggableCard = ({
               item={item}
               index={index}
               moveCard={moveCard}
+              findCard={findCard}
               groupId={groupId}
               renderItem={renderItem}
             />

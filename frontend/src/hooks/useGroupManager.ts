@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import type { Item } from '../components/DragAndDropper'
+import { generateColor } from '../utils/dragAndDropUtils'
 
 interface Group {
   id: string
@@ -15,6 +16,12 @@ interface UseGroupManagerProps {
 export const useGroupManager = ({ initialGroups, initialGroupItems }: UseGroupManagerProps) => {
   const [groups, setGroups] = useState<Group[]>(initialGroups)
   const [groupItems, setGroupItems] = useState<Record<string, Item[]>>(initialGroupItems)
+
+  // Sync with external changes to initialGroups and initialGroupItems
+  useEffect(() => {
+    setGroups(initialGroups)
+    setGroupItems(initialGroupItems)
+  }, [initialGroups, initialGroupItems])
 
   // Generate unique IDs
   const generateId = () => Math.random().toString(36).substr(2, 9)
@@ -35,7 +42,7 @@ export const useGroupManager = ({ initialGroups, initialGroupItems }: UseGroupMa
     const newGroup: Group = {
       id: generateId(),
       title: `Group ${groups.length + 1}`,
-      backgroundColor: `hsl(${Math.random() * 360}, 70%, 90%)`,
+      backgroundColor: generateColor(Math.random() * 360, 70, 90),
     }
     setGroups(prev => [...prev, newGroup])
     setGroupItems(prev => ({ ...prev, [newGroup.id]: [] }))
@@ -46,13 +53,13 @@ export const useGroupManager = ({ initialGroups, initialGroupItems }: UseGroupMa
     const newGroup: Group = {
       id: generateId(),
       title: `Item ${groups.length + 1}`,
-      backgroundColor: `hsl(${Math.random() * 360}, 70%, 90%)`,
+      backgroundColor: generateColor(Math.random() * 360, 70, 90),
     }
     
     const newItem: Item = {
       id: generateId(),
       text: `Item ${groups.length + 1}`,
-      color: `hsl(${Math.random() * 360}, 70%, 60%)`,
+      color: generateColor(Math.random() * 360, 70, 60),
       groupId: newGroup.id,
     }
     
@@ -65,7 +72,7 @@ export const useGroupManager = ({ initialGroups, initialGroupItems }: UseGroupMa
     const newItem: Item = {
       id: generateId(),
       text: `Item ${Object.values(groupItems).flat().length + 1}`,
-      color: `hsl(${Math.random() * 360}, 70%, 60%)`,
+      color: generateColor(Math.random() * 360, 70, 60),
       groupId: groupId,
     }
     
@@ -75,8 +82,38 @@ export const useGroupManager = ({ initialGroups, initialGroupItems }: UseGroupMa
     }))
   }
 
-  // Move item within a group
-  const moveItemInGroup = useCallback((groupId: string, dragIndex: number, hoverIndex: number) => {
+  // Find card by id within a group
+  const findCard = useCallback((groupId: string, id: string) => {
+    const items = groupItems[groupId] || []
+    const card = items.find(item => item.id === id)
+    if (!card) {
+      throw new Error(`Card with id ${id} not found in group ${groupId}`)
+    }
+    return {
+      card,
+      index: items.indexOf(card),
+    }
+  }, [groupItems])
+
+  // Move item within a group using id-based approach
+  const moveItemInGroup = useCallback((groupId: string, id: string, atIndex: number) => {
+    setGroupItems(prev => {
+      const newGroupItems = { ...prev }
+      const items = [...newGroupItems[groupId]]
+      const { card, index } = findCard(groupId, id)
+      
+      if (index === atIndex) return prev
+      
+      items.splice(index, 1)
+      items.splice(atIndex, 0, card)
+      
+      newGroupItems[groupId] = items
+      return newGroupItems
+    })
+  }, [findCard])
+
+  // Legacy function for backward compatibility - converts index-based to id-based
+  const moveItemInGroupByIndex = useCallback((groupId: string, dragIndex: number, hoverIndex: number) => {
     setGroupItems(prev => {
       const newGroupItems = { ...prev }
       const items = [...newGroupItems[groupId]]
@@ -117,7 +154,7 @@ export const useGroupManager = ({ initialGroups, initialGroupItems }: UseGroupMa
     const newGroup: Group = {
       id: generateId(),
       title: item.text,
-      backgroundColor: `hsl(${Math.random() * 360}, 70%, 90%)`,
+      backgroundColor: generateColor(Math.random() * 360, 70, 90),
     }
     
     setGroupItems(prev => {
@@ -152,6 +189,8 @@ export const useGroupManager = ({ initialGroups, initialGroupItems }: UseGroupMa
     createNewItem,
     createItemInGroup,
     moveItemInGroup,
+    moveItemInGroupByIndex,
+    findCard,
     transferItem,
     handleItemDrop,
   }

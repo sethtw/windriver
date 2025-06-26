@@ -23,7 +23,7 @@ const CustomDragLayer = () => {
         left: x,
         top: y,
         transform: 'rotate(-5deg)',
-        opacity: 0.75,
+        opacity: 0.45,
       }}
     >
       <div
