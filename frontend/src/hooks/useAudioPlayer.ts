@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import shaka from 'shaka-player';
 import { AudioFile, PlayerEvent } from '../types';
+import { logger } from '../services/logging';
+import { ErrorFactory, ErrorCategory } from '../types/errors';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL;
 
@@ -54,20 +56,21 @@ export const useAudioPlayer = (videoRef: React.RefObject<HTMLAudioElement>) => {
         setIsPlayerInitialized(false);
       }
     };
-  }, []); // No dependencies - only run once
+  }, [addEvent, isPlayerInitialized, videoRef]); // Fixed dependencies
 
   const handleFileSelect = useCallback(async (file: AudioFile): Promise<void> => {
     if (!shakaPlayerRef.current || !isPlayerInitialized) return;
     
     setError(null);
-    console.log('Selected file:', file);
+    logger.info('File selected for playback', { fileName: file.name });
 
+    const streamId = `${API_BASE_URL}${file.manifest_url}`;
+    
     try {
-      const streamId = `${API_BASE_URL}${file.manifest_url}`;
-      console.log('Attempting to load manifest and segments from:', streamId);
+      logger.info('Loading manifest and segments', { streamId, fileName: file.name });
       
       (shakaPlayerRef.current as any).addEventListener('error', (event: { detail: any }) => {
-        console.error('Shaka Player error:', event.detail);
+        logger.error('Shaka Player error occurred', undefined, { errorDetails: event.detail });
         setError(`Player error: ${event.detail.code} - ${event.detail.message}`);
       });
 
@@ -84,14 +87,27 @@ export const useAudioPlayer = (videoRef: React.RefObject<HTMLAudioElement>) => {
       });
 
       await shakaPlayerRef.current.load(streamId);
-      console.log(`Stream ${file.name} initialized`);
+      logger.info('Stream initialized successfully', { fileName: file.name });
       if (videoRef.current) {
         videoRef.current.play();
       }
-    } catch (err: any) {
-      console.error('Detailed error:', err);
-      if (err.code && err.message) {
-        setError(`Failed to play file: ${err.code} - ${err.message}`);
+    } catch (error) {
+      const appError = ErrorFactory.createFromUnknownError(error, {
+        component: 'useAudioPlayer',
+        action: 'handleFileSelect',
+        metadata: {
+          fileName: file.name,
+          streamId: streamId
+        }
+      });
+
+      logger.logError(appError, {
+        component: 'useAudioPlayer',
+        action: 'handleFileSelect'
+      });
+
+      if (appError.category === ErrorCategory.PLAYER) {
+        setError(`Player error: ${appError.message}`);
       } else {
         setError('Failed to play file');
       }

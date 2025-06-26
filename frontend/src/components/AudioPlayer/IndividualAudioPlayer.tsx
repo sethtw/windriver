@@ -3,6 +3,7 @@ import { Typography, Paper, Box, Button, IconButton, Chip } from '@mui/material'
 import { Close as CloseIcon } from '@mui/icons-material';
 import shaka from 'shaka-player';
 import { AudioFile } from '../../types';
+import { logger } from '../../services/logging';
 
 interface IndividualAudioPlayerProps {
   file: AudioFile;
@@ -41,7 +42,11 @@ const IndividualAudioPlayer: React.FC<IndividualAudioPlayerProps> = ({ file, onR
 
       eventTypes.forEach(eventType => {
         playerRef.current!.addEventListener(eventType, (event: { detail: any }) => {
-          console.log(`Player ${file.name} - ${eventType}:`, event.detail);
+          logger.info(`Player event triggered`, { 
+            fileName: file.name, 
+            eventType, 
+            eventDetails: event.detail 
+          });
         });
       });
 
@@ -54,18 +59,22 @@ const IndividualAudioPlayer: React.FC<IndividualAudioPlayerProps> = ({ file, onR
         setIsPlayerInitialized(false);
       }
     };
-  }, []); // No dependencies - only run once
+  }, [file.name]); // Fixed dependencies
 
   const loadFile = useCallback(async () => {
     if (!playerRef.current || !isPlayerInitialized) return;
     
     setError(null);
+    const streamId = `${API_BASE_URL}${file.manifest_url}`;
+    
     try {
-      const streamId = `${API_BASE_URL}${file.manifest_url}`;
-      console.log(`Loading ${file.name} from:`, streamId);
+      logger.info('Loading file for individual player', { fileName: file.name, streamId });
       
       playerRef.current.addEventListener('error', (event: { detail: any }) => {
-        console.error(`Player ${file.name} error:`, event.detail);
+        logger.error('Individual player error occurred', undefined, { 
+          fileName: file.name, 
+          errorDetails: event.detail 
+        });
         setError(`Player error: ${event.detail.code} - ${event.detail.message}`);
       });
 
@@ -82,14 +91,14 @@ const IndividualAudioPlayer: React.FC<IndividualAudioPlayerProps> = ({ file, onR
       });
 
       await playerRef.current.load(streamId);
-      console.log(`Stream ${file.name} initialized`);
-    } catch (err: any) {
-      console.error(`Error loading ${file.name}:`, err);
-      if (err.code && err.message) {
-        setError(`Failed to load: ${err.code} - ${err.message}`);
-      } else {
-        setError('Failed to load file');
-      }
+      logger.info('Individual stream initialized successfully', { fileName: file.name });
+    } catch (error) {
+      logger.error('Failed to load file in individual player', undefined, { 
+        fileName: file.name, 
+        streamId,
+        fullError: error 
+      });
+      setError('Failed to load file');
     }
   }, [file, API_BASE_URL, isPlayerInitialized]);
 

@@ -1,5 +1,6 @@
 import { ApiService } from '../services/api';
 import { sleep } from '../utils';
+import { logger } from '../services/logging';
 
 /**
  * Streaming operation handlers for managing audio capture and streaming
@@ -15,15 +16,15 @@ export class StreamingHandlers {
   ): Promise<void> {
     try {
       await ApiService.startCaptureAndStream();
-      console.log('Capturing and streaming...');
+      logger.info('Capturing and streaming...');
       onStreamingStart?.();
       
       // Wait for processing and reload files
       await sleep(5000);
       onFilesReload?.();
-      console.log('Files loaded');
+      logger.info('Files loaded');
     } catch (err) {
-      console.error('Failed to initialize stream:', err);
+      logger.error('Failed to initialize stream', undefined, { error: err });
       onStreamingError?.();
     }
   }
@@ -41,7 +42,7 @@ export class StreamingHandlers {
       onStreamingStop?.();
       onFilesReload?.();
     } catch (err) {
-      console.error('Failed to stop stream:', err);
+      logger.error('Failed to stop stream', undefined, { error: err });
       onError?.(err);
     }
   }
@@ -55,10 +56,10 @@ export class StreamingHandlers {
   ): Promise<void> {
     try {
       const devices = await ApiService.getAudioDevices();
-      console.log('Audio devices:', devices);
+      logger.info('Audio devices:', devices);
       onSuccess?.(devices);
     } catch (err) {
-      console.error('Failed to get audio devices:', err);
+      logger.error('Failed to get audio devices', undefined, { error: err });
       onError?.(err);
     }
   }
