@@ -25,8 +25,8 @@ const IndividualAudioPlayer: React.FC<IndividualAudioPlayerProps> = ({ file, onR
     shaka.polyfill.installAll();
     if (shaka.Player.isBrowserSupported() && audioRef.current && !isPlayerInitialized) {
       const player = new shaka.Player();
-      player.attach(audioRef.current);
       playerRef.current = player;
+      playerRef.current.attach(audioRef.current);
 
       // Add event listeners
       const eventTypes = [
@@ -40,7 +40,7 @@ const IndividualAudioPlayer: React.FC<IndividualAudioPlayerProps> = ({ file, onR
       ];
 
       eventTypes.forEach(eventType => {
-        player.addEventListener(eventType, (event: { detail: any }) => {
+        playerRef.current!.addEventListener(eventType, (event: { detail: any }) => {
           console.log(`Player ${file.name} - ${eventType}:`, event.detail);
         });
       });

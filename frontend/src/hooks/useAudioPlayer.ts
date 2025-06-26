@@ -5,7 +5,7 @@ import { AudioFile, PlayerEvent } from '../types';
 const API_BASE_URL = import.meta.env.VITE_API_URL;
 
 export const useAudioPlayer = (videoRef: React.RefObject<HTMLAudioElement>) => {
-  const playerRef = useRef<shaka.Player | null>(null);
+  const shakaPlayerRef = useRef<shaka.Player | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [events, setEvents] = useState<PlayerEvent[]>([]);
   const [isPlayerInitialized, setIsPlayerInitialized] = useState<boolean>(false);
@@ -23,10 +23,10 @@ export const useAudioPlayer = (videoRef: React.RefObject<HTMLAudioElement>) => {
     shaka.polyfill.installAll();
     if (shaka.Player.isBrowserSupported() && videoRef.current && !isPlayerInitialized) {
       // Create player without media element
-      const player = new shaka.Player();
+      const shakaPlayer = new shaka.Player();
       // Attach the media element using the attach method
-      player.attach(videoRef.current);
-      playerRef.current = player;
+      shakaPlayerRef.current = shakaPlayer;
+      shakaPlayerRef.current.attach(videoRef.current);
 
       // Add event listeners
       const eventTypes = [
@@ -40,7 +40,7 @@ export const useAudioPlayer = (videoRef: React.RefObject<HTMLAudioElement>) => {
       ];
 
       eventTypes.forEach(eventType => {
-        player.addEventListener(eventType, (event: { detail: any }) => {
+        shakaPlayerRef.current!.addEventListener(eventType, (event: { detail: any }) => {
           addEvent(eventType, event.detail);
         });
       });
@@ -49,15 +49,15 @@ export const useAudioPlayer = (videoRef: React.RefObject<HTMLAudioElement>) => {
     }
 
     return () => {
-      if (playerRef.current) {
-        playerRef.current.destroy();
+      if (shakaPlayerRef.current) {
+        shakaPlayerRef.current.destroy();
         setIsPlayerInitialized(false);
       }
     };
   }, []); // No dependencies - only run once
 
   const handleFileSelect = useCallback(async (file: AudioFile): Promise<void> => {
-    if (!playerRef.current || !isPlayerInitialized) return;
+    if (!shakaPlayerRef.current || !isPlayerInitialized) return;
     
     setError(null);
     console.log('Selected file:', file);
@@ -66,12 +66,12 @@ export const useAudioPlayer = (videoRef: React.RefObject<HTMLAudioElement>) => {
       const streamId = `${API_BASE_URL}${file.manifest_url}`;
       console.log('Attempting to load manifest and segments from:', streamId);
       
-      (playerRef.current as any).addEventListener('error', (event: { detail: any }) => {
+      (shakaPlayerRef.current as any).addEventListener('error', (event: { detail: any }) => {
         console.error('Shaka Player error:', event.detail);
         setError(`Player error: ${event.detail.code} - ${event.detail.message}`);
       });
 
-      (playerRef.current as any).configure({
+      (shakaPlayerRef.current as any).configure({
         streaming: {
           retryParameters: {
             timeout: 10000,
@@ -83,7 +83,7 @@ export const useAudioPlayer = (videoRef: React.RefObject<HTMLAudioElement>) => {
         }
       });
 
-      await playerRef.current.load(streamId);
+      await shakaPlayerRef.current.load(streamId);
       console.log(`Stream ${file.name} initialized`);
       if (videoRef.current) {
         videoRef.current.play();
@@ -98,5 +98,5 @@ export const useAudioPlayer = (videoRef: React.RefObject<HTMLAudioElement>) => {
     }
   }, [videoRef, isPlayerInitialized]);
 
-  return { playerRef, error, events, handleFileSelect };
+  return { playerRef: shakaPlayerRef, error, events, handleFileSelect };
 }; 
