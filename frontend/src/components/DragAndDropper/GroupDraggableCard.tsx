@@ -114,7 +114,7 @@ const GroupDraggableCard = ({
         ) : (
           items.map((item, index) => (
             <DraggableCard
-              key={`${item.id}-${index}`}
+              key={item.id}
               item={item}
               index={index}
               moveCard={moveCard}

@@ -71,9 +71,12 @@ const DraggableAudioPlayer: React.FC<DraggableAudioPlayerProps> = ({
 
   // Custom render function for audio items
   const renderAudioItem = useCallback((item: Item) => {
+    console.log('renderAudioItem called for item:', item.id, 'audioFile:', item.audioFile);
+    
     if (!item.audioFile) {
       return (
         <div
+          key={item.id}
           style={{
             width: 200,
             height: 80,
@@ -96,7 +99,7 @@ const DraggableAudioPlayer: React.FC<DraggableAudioPlayerProps> = ({
     }
 
     return (
-      <Box sx={{ minWidth: 400, minHeight: 200 }}>
+      <Box key={item.audioFile.name} sx={{ minWidth: 400, minHeight: 200 }}>
         <IndividualAudioPlayer
           file={item.audioFile}
           onRemove={onRemovePlayer}

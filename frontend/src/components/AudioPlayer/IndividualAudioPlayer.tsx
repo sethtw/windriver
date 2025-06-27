@@ -3,6 +3,7 @@ import { Typography, Paper, Box, Button, IconButton, Chip } from '@mui/material'
 import { Close as CloseIcon } from '@mui/icons-material';
 import shaka from 'shaka-player';
 import { AudioFile } from '../../types';
+import { playerRegistry } from '../../services/playerRegistry';
 
 interface IndividualAudioPlayerProps {
   file: AudioFile;
@@ -11,7 +12,6 @@ interface IndividualAudioPlayerProps {
 
 const IndividualAudioPlayer: React.FC<IndividualAudioPlayerProps> = ({ file, onRemove }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
-  const playerRef = useRef<shaka.Player | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState<number>(0);
@@ -20,56 +20,36 @@ const IndividualAudioPlayer: React.FC<IndividualAudioPlayerProps> = ({ file, onR
 
   const API_BASE_URL = import.meta.env.VITE_API_URL;
 
-  // Initialize Shaka player once
-  useEffect(() => {
-    shaka.polyfill.installAll();
-    if (shaka.Player.isBrowserSupported() && audioRef.current && !isPlayerInitialized) {
-      const player = new shaka.Player();
-      playerRef.current = player;
-      playerRef.current.attach(audioRef.current);
-
-      // Add event listeners
-      const eventTypes = [
-        'buffering',
-        'loaded',
-        'loading',
-        'manifestparsed',
-        'manifestupdated',
-        'started',
-        'statechanged'
-      ];
-
-      eventTypes.forEach(eventType => {
-        playerRef.current!.addEventListener(eventType, (event: { detail: any }) => {
-          console.log(`Player ${file.name} - ${eventType}:`, event.detail);
-        });
-      });
-
-      setIsPlayerInitialized(true);
-    }
-
-    return () => {
-      if (playerRef.current) {
-        playerRef.current.destroy();
-        setIsPlayerInitialized(false);
-      }
-    };
-  }, []); // No dependencies - only run once
-
-  const loadFile = useCallback(async () => {
-    if (!playerRef.current || !isPlayerInitialized) return;
+  const loadFile = useCallback(async (player?: shaka.Player) => {
+    const targetPlayer = player || playerRegistry.getPlayer(file.name);
+    if (!targetPlayer || !isPlayerInitialized) return;
     
     setError(null);
     try {
       const streamId = `${API_BASE_URL}${file.manifest_url}`;
       console.log(`Loading ${file.name} from:`, streamId);
       
-      playerRef.current.addEventListener('error', (event: { detail: any }) => {
+      // Check if player is already loaded with this content
+      let currentManifestUrl: string | null = null;
+      try {
+        currentManifestUrl = await targetPlayer.getAssetUri();
+        console.log(`Current manifest URL:`, currentManifestUrl);
+      } catch (e) {
+        console.log(`Could not get current manifest URL:`, e);
+      }
+      
+      // If player is already loaded with the same content, don't reload
+      if (currentManifestUrl === streamId) {
+        console.log(`Player already loaded with same content, skipping load`);
+        return;
+      }
+      
+      targetPlayer.addEventListener('error', (event: { detail: any }) => {
         console.error(`Player ${file.name} error:`, event.detail);
         setError(`Player error: ${event.detail.code} - ${event.detail.message}`);
       });
 
-      playerRef.current.configure({
+      targetPlayer.configure({
         streaming: {
           retryParameters: {
             timeout: 10000,
@@ -81,8 +61,11 @@ const IndividualAudioPlayer: React.FC<IndividualAudioPlayerProps> = ({ file, onR
         }
       });
 
-      await playerRef.current.load(streamId);
+      await targetPlayer.load(streamId);
       console.log(`Stream ${file.name} initialized`);
+      
+      // Store manifest URL for future reattachment
+      playerRegistry.setManifestUrl(file.name, streamId);
     } catch (err: any) {
       console.error(`Error loading ${file.name}:`, err);
       if (err.code && err.message) {
@@ -93,20 +76,71 @@ const IndividualAudioPlayer: React.FC<IndividualAudioPlayerProps> = ({ file, onR
     }
   }, [file, API_BASE_URL, isPlayerInitialized]);
 
-  // Load file when player is initialized and file changes
+  // Initialize Shaka player once per file
   useEffect(() => {
-    if (isPlayerInitialized) {
-      loadFile();
+    // Use a stable identifier that doesn't change when object references change
+    const fileIdentifier = file.name || file.manifest_url || JSON.stringify(file);
+    console.log('IndividualAudioPlayer useEffect - fileIdentifier:', fileIdentifier, 'audioRef.current:', !!audioRef.current);
+    
+    // Wait for audio element to be ready
+    if (!audioRef.current) {
+      console.log('Audio element not ready yet, waiting...');
+      return;
     }
-  }, [isPlayerInitialized, loadFile]);
+    
+    if (playerRegistry.isPlayerRegistered(file.name)) {
+      console.log('Player already registered for:', file.name);
+      // Reuse existing player
+      const existingPlayer = playerRegistry.getPlayer(file.name);
+      const existingAudio = playerRegistry.getAudioElement(file.name);
+      console.log('Existing player:', existingPlayer, 'existing audio:', existingAudio);
+      
+      if (existingPlayer && audioRef.current) {
+        // Reattach to current audio element
+        console.log('Reattaching player for:', file.name);
+        playerRegistry.reattachPlayer(file.name, audioRef.current).catch(console.error);
+        setIsPlayerInitialized(true);
+        // Content reload is handled in reattachPlayer
+        return;
+      }
+    }
+
+    // Create new player if not exists
+    console.log('Creating new player for:', file.name);
+    shaka.polyfill.installAll();
+    if (shaka.Player.isBrowserSupported() && audioRef.current) {
+      const player = new shaka.Player();
+      player.attach(audioRef.current);
+      playerRegistry.registerPlayer(file.name, player, audioRef.current);
+      setIsPlayerInitialized(true);
+      
+      // Only load file for new players
+      loadFile(player);
+    }
+
+    return () => {
+      console.log('IndividualAudioPlayer cleanup for:', file.name);
+      // Don't destroy player on unmount, keep it in registry
+      // The player will be reused when component remounts
+    };
+  }, [file.name, loadFile]); // Only depend on file.name, not the entire file object
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
-    const handlePlay = () => setIsPlaying(true);
-    const handlePause = () => setIsPlaying(false);
-    const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
+    const handlePlay = () => {
+      setIsPlaying(true);
+      playerRegistry.updatePlayerState(file.name, { isPlaying: true });
+    };
+    const handlePause = () => {
+      setIsPlaying(false);
+      playerRegistry.updatePlayerState(file.name, { isPlaying: false });
+    };
+    const handleTimeUpdate = () => {
+      setCurrentTime(audio.currentTime);
+      playerRegistry.updatePlayerState(file.name, { currentTime: audio.currentTime });
+    };
     const handleLoadedMetadata = () => setDuration(audio.duration);
 
     audio.addEventListener('play', handlePlay);
@@ -120,14 +154,37 @@ const IndividualAudioPlayer: React.FC<IndividualAudioPlayerProps> = ({ file, onR
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
     };
-  }, []);
+  }, [file.name]);
 
   const handlePlayPause = () => {
-    if (audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.pause();
+    const player = playerRegistry.getPlayer(file.name);
+    const audio = audioRef.current;
+    
+    if (!player || !audio) {
+      console.log('No player or audio element available for play/pause');
+      return;
+    }
+    
+    console.log('handlePlayPause called, current isPlaying:', isPlaying);
+    console.log('Audio element readyState:', audio.readyState);
+    console.log('Audio element paused:', audio.paused);
+    console.log('Audio element currentTime:', audio.currentTime);
+    console.log('Audio element duration:', audio.duration);
+    
+    if (isPlaying) {
+      console.log('Pausing audio');
+      audio.pause();
+    } else {
+      console.log('Playing audio');
+      // Check if audio is ready to play
+      if (audio.readyState >= 2) { // HAVE_CURRENT_DATA or higher
+        audio.play().catch((error) => {
+          console.error('Failed to play audio:', error);
+          setError(`Play failed: ${error.message}`);
+        });
       } else {
-        audioRef.current.play();
+        console.log('Audio not ready to play, readyState:', audio.readyState);
+        setError('Audio not ready to play yet');
       }
     }
   };

@@ -135,6 +135,11 @@ export const useGroupManager = ({ initialGroups, initialGroupItems }: UseGroupMa
       const newGroupItems = { ...prev }
       const sourceGroupId = item.groupId
       
+      // Don't do anything if the item is already in the target group
+      if (sourceGroupId === targetGroupId) {
+        return prev
+      }
+      
       // Add to target group with updated groupId
       const updatedItem = { ...item, groupId: targetGroupId }
       newGroupItems[targetGroupId] = [...(newGroupItems[targetGroupId] || []), updatedItem]
